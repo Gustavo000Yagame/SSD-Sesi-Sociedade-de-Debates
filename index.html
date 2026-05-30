@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SSD | SESI Sociedade de Debates</title>
+  <link rel="icon" type="image/png" href="/image/favicon.png" />
+  <link rel="apple-touch-icon" href="/image/favicon.png" />
+  <link rel="stylesheet" href="stylle.css" />
+</head>
+<body>
+
+  <div id="loginScreen" class="login-screen">
+    <div class="login-card">
+      <div class="login-brand">
+        <h1>Acesse a SESI Sociedade de Debates:</h1>
+      </div>
+      <div class="login-panel">
+        
+        <button type="button" id="googleLoginBtn" class="google-btn" onclick="loginComGoogle()">
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" alt="Logo Google">
+          Entrar com Google
+        </button>
+
+        <div class="auth-tabs" role="tablist" aria-label="Alternar autenticação">
+          <button type="button" id="tab-login" class="on" onclick="switchAuth('login')">Login</button>
+          <button type="button" id="tab-register" onclick="switchAuth('register')">Criar Conta</button>
+        </div>
+        
+        <div id="loginBox" class="auth-box on">
+          <h2>Login</h2>
+          <form id="loginForm" class="form">
+            <label class="full">E-mail<input id="loginEmail" type="email" required autocomplete="email" placeholder="seuemail@exemplo.com"></label>
+            <label class="full">Senha<input id="loginPassword" type="password" required autocomplete="current-password" placeholder="Sua senha"></label>
+            <div class="full"><button type="submit">Entrar</button></div>
+          </form>
+          <p id="loginError" class="red auth-message" style="display:none"></p>
+        </div>
+
+        <div id="signupBox" class="auth-box">
+          <h2>Criar conta</h2>
+          <form id="signupForm" class="form">
+            <label class="full">Nome completo<input id="signupName" required autocomplete="name" placeholder="Seu nome"></label>
+            <label class="full">Série/Turma
+              <div class="choice-row" role="radiogroup" aria-label="Série/Turma">
+                <label><input name="signupClass" type="radio" value="1º E.M" required><span>1º E.M</span></label>
+                <label><input name="signupClass" type="radio" value="2º E.M"><span>2º E.M</span></label>
+                <label><input name="signupClass" type="radio" value="3º E.M"><span>3º E.M</span></label>
+              </div>
+            </label>
+            <label class="full">E-mail<input id="signupEmail" type="email" required autocomplete="email" placeholder="seuemail@exemplo.com"></label>
+            <label class="full">Senha<input id="signupPassword" type="password" required autocomplete="new-password" placeholder="Crie uma senha"></label>
+            <label class="full">Confirmar senha<input id="signupConfirm" type="password" required autocomplete="new-password" placeholder="Repita a senha"></label>
+            <div class="full"><button type="submit">Criar conta</button></div>
+          </form>
+          <p id="signupError" class="red auth-message" style="display:none"></p>
+          <div class="login-tools">
+            <button type="button" class="btn2" onclick="switchAuth('login')">Voltar ao login</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="app">
+    <aside>
+      <button type="button" class="menu-toggle" onclick="toggleNav()" aria-label="Abrir abas" title="Abrir abas">☰</button>
+      <div class="brand"><div class="mark"><img src="./image/logo.png" alt="SESI Debate"></div><div><h1>SESI Sociedade<br>de Debates</h1><small>Tubarão (SC)</small></div></div>
+      <div class="nav" id="nav">
+        <button class="on" data-s="student">☻ Meu Painel</button><button data-s="overview">▰ Visão Geral</button><button data-s="performance">▤ Desempenho</button><button data-s="manual">▣ Apostila & IA</button><button data-s="judge">▥ Registro do Juiz</button><button data-s="calendar">◷ Calendário</button><button data-s="settings">⚙ Configurações</button>
+      </div>
+      <div class="tip"><b id="sessionName">Sessão</b><p id="sessionRole">Não logado</p></div>
+    </aside>
+    <main>
+      <section id="student" class="sec on">
+        <div class="tools">
+          <div><h2>Meu Painel</h2><p>Área do aluno: acompanhe desempenho, personalize seu perfil e acesse funções liberadas pelo admin.</p></div>
+        </div>
+
+        <div class="card profile-card">
+          <div class="profile-banner" id="studentBanner"></div>
+          <div class="profile-body">
+            <div class="student-photo" id="studentPhoto">A</div>
+            <div class="profile-meta">
+              <h3 id="studentName">Aluno SSD</h3>
+              <p id="studentInfo">Carregando perfil...</p>
+              <div class="student-actions">
+                <button type="button" onclick="editMyProfile()">Editar perfil</button>
+                <button type="button" class="btn2" onclick="show('manual')">Abrir apostila</button>
+                <button type="button" class="btn2" onclick="show('performance')">Ver desempenho</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="studentProfileEditor" class="card student-editor gap-top">
+          <h3>Personalizar meu perfil</h3>
+          <p class="notice">Como aluno, você só pode alterar sua foto e seu banner. Nome, turma e status são administrados pela SSD.</p>
+          <div class="profile-upload">
+            <div class="upload-box">
+              <h4>Foto de perfil</h4>
+              <p>Imagem quadrada. O app recorta automaticamente.</p>
+              <input id="studentAvatarFile" type="file" accept="image/*" onchange="loadStudentAvatar(event)">
+              <div class="student-actions" style="margin-top:10px">
+                <button type="button" class="danger" onclick="removeMyAvatar()">Remover foto</button>
+              </div>
+            </div>
+            <div class="upload-box">
+              <h4>Banner do perfil</h4>
+              <p>Formato recomendado: 960×360. Aceita PNG, JPG, WebP ou GIF até 10 MB.</p>
+              <input id="studentBannerFile" type="file" accept="image/*,image/gif" onchange="loadStudentBanner(event)">
+              <div class="student-actions" style="margin-top:10px">
+                <button type="button" class="danger" onclick="removeMyBanner()">Remover banner</button>
+              </div>
+            </div>
+          </div>
+          <div class="student-actions" style="margin-top:16px">
+            <button type="button" onclick="saveMyProfile()">Salvar alterações</button>
+            <button type="button" class="btn2" onclick="cancelMyProfile()">Cancelar</button>
+          </div>
+        </div>
+
+        <div class="grid c3 gap-top" id="studentMetrics"></div>
+        <div class="grid c2 gap-top">
+          <div class="card"><h3>Meus próximos debates</h3><div id="studentEvents" class="grid"></div></div>
+          <div class="card"><h3>Minhas notas</h3><div id="studentScores"></div></div>
+        </div>
+      </section>
+      <section id="overview" class="sec"><div class="grid c4" id="metrics"></div><div class="grid c2" style="margin-top:16px"><div class="card"><h3>Próximos debates</h3><div id="upcoming" class="grid"></div></div><div class="card"><h3>Top debatedores</h3><div id="top"></div></div></div></section>
+      <section id="debaters" class="sec"><div class="tools"><div><h2>Debatedores</h2><p>Cadastro simples. Média e quantidade de debates são calculadas pelo sistema.</p></div><input id="q" placeholder="Buscar debatedor..." oninput="render()" /></div><div class="grid c2"><div class="card"><h3 id="dfTitle">Adicionar debatedor</h3><form id="debaterForm" class="form"><input type="hidden" id="dId" /><label>Nome<input id="dName" required placeholder="Ex.: Ana Souza" /></label><label>Série/Turma<input id="dClass" placeholder="Ex.: 2º EM" /></label><label>Status<select id="dStatus"><option>Ativo</option><option>Em treinamento</option><option>Reserva</option></select></label>
+<label class="full">Permissões definidas pelo admin
+  <div class="role-checks">
+    <label><input id="dRoleJudge" type="checkbox"> Também pode atuar como juiz</label>
+  </div>
+  <small>Todos são alunos/debatedores por padrão. Marque juiz apenas para quem também pode julgar debates.</small>
+</label>
+<label>Foto de perfil<input id="dPhotoFile" type="file" accept="image/*" onchange="loadDebaterPhoto(event)"></label><input type="hidden" id="dPhoto"><div class="full"><div class="photo-preview" id="dPhotoPreview">Foto</div></div><div class="full"><button type="submit">Salvar perfil</button> <button type="button" class="btn2" onclick="resetDebater()">Limpar</button> <button type="button" class="danger" onclick="removeDebaterPhoto()">Remover foto</button></div></form></div><div class="card"><h3>Lista</h3><div id="debaterCards" class="grid"></div></div></div></section>
+      <section id="performance" class="sec"><div class="tools"><div><h2>Desempenho</h2><p>Calculado somente a partir das avaliações lançadas nos debates.</p></div></div><div class="grid c3" id="perf"></div><div class="card" style="margin-top:16px"><h3>Ranking geral</h3><table><thead><tr><th>#</th><th>Debatedor</th><th>Debates</th><th>Conteúdo</th><th>Estilo</th><th>Estratégia</th><th>Média</th><th></th></tr></thead><tbody id="rank"></tbody></table></div></section>
+      <section id="manual" class="sec manual"><div class="tools"><div><h2>Apostila, busca e IA</h2><p>Consulte regras, procure termos e tire dúvidas dentro do próprio site.</p></div><button type="button" class="btn2" onclick="toggleFullManual()">Ler apostila na íntegra</button></div><div class="grid c2"><div class="qa"><h3>Consultar apostila</h3><input id="manualSearch" placeholder="Busque por POI, reply, moção, definição, pontuação..." oninput="searchManual()" /><div id="searchResults" style="margin-top:12px"></div></div><div class="qa"><h3>Tirar dúvida com IA</h3><p>Responde usando a apostila embutida. Para IA real, depois conecta uma API.</p><textarea id="aiQuestion" placeholder="Ex.: O 3º debatedor pode trazer argumento novo?"></textarea><button type="button" onclick="askAI()">Perguntar</button><div id="aiAnswer" class="answer">Faça uma pergunta sobre regras, funções, POIs, moções ou julgamento.</div></div></div><div class="tabs" id="tabs" style="margin-top:16px"></div><div id="manualPanels"></div><div id="fullManual" class="card full-manual"></div></section>
+      <section id="judge" class="sec"><div class="tools"><div><h2>Registro do Juiz</h2><p>Registre o debate que aconteceu, quem participou, a decisão e a pontuação de cada fala.</p></div></div><div class="grid c2"><div class="card"><h3>Selecionar debate</h3><label>Debate<select id="judgeEventSelect" onchange="loadJudgeEvent()"></select></label><div id="judgeEventInfo" style="margin-top:14px"></div><div class="grid c2" style="margin-top:14px"><label>Juiz responsável<input id="judgeName" placeholder="Nome do juiz"></label><label>Vencedor<select id="judgeWinner"><option value="">Sem decisão</option><option>Governo</option><option>Oposição</option></select></label></div><label style="margin-top:14px">Justificativa / OA<textarea id="judgeDecision" placeholder="Resumo da decisão, choques principais, feedback geral..."></textarea></label><button type="button" style="margin-top:12px" onclick="saveJudgeRecord()">Salvar registro do juiz</button></div><div class="card"><h3>Pontuação dos participantes</h3><p>As notas seguem a lógica WSDC: construtivos usam Conteúdo 24-32, Estilo 24-32, Estratégia 12-16. Replies usam metade da escala.</p><div id="judgeScores" class="grid"></div></div></div><div class="card" style="margin-top:16px"><h3>Registros salvos</h3><div id="judgeSaved" class="judge-list"></div></div></section><section id="calendar" class="sec"><div class="tools"><div><h2>Calendário</h2><p>Clique em um dia para visualizar a agenda de debates da SSD.</p></div><button type="button" class="admin-only" onclick="resetEvent();show('calendar')">Novo debate</button></div><div class="grid c2"><div class="card"><div class="calendar-head"><button type="button" class="btn2" onclick="moveMonth(-1)">←</button><div class="calendar-title" id="calTitle"></div><button type="button" class="btn2" onclick="moveMonth(1)">→</button></div><div class="calendar" id="calendarGrid"></div></div><div class="card admin-only"><h3 id="efTitle">Novo debate</h3><form id="eventForm" class="form"><input type="hidden" id="eId" /><label>Data<input id="eDate" type="date" required onchange="updateDateFromInput()" /></label><label>Horário<input id="eTime" type="time" required /></label><label class="full">Dia da semana<input id="eWeekday" disabled /></label><label class="full">Moção<input id="eMotion" required placeholder="Ex.: Esta Casa proibiria celulares na escola" /></label><label>Formato<select id="eFormat"><option>Treino interno</option><option>Simulado WSDC</option><option>Campeonato</option><option>Aula prática</option></select></label><label>Local<input id="ePlace" placeholder="Sala, auditório ou link" /></label><label class="full">Escalação<div id="lineup" class="grid c2"></div></label><label class="full">Avaliação dos participantes<div id="evals" class="grid"></div></label><div class="full"><button type="submit">Salvar debate</button> <button type="button" class="btn2" onclick="resetEvent()">Limpar</button></div></form></div></div><div class="card" style="margin-top:16px"><h3 id="dayTitle">Debates do dia</h3><div id="dayEvents" class="grid"></div></div><div class="card"><h3>Todos os debates</h3><p class="muted">Lista geral dos debates cadastrados.</p><div id="allEvents" class="grid"></div><button type="button" class="danger admin-only" style="margin-top:12px" onclick="deleteAllEvents()">Excluir todos os debates</button></div></section>
+      <section id="settings" class="sec">
+        <div class="tools"><div><h2>Configurações</h2><p>Gerencie sua sessão e ajustes liberados para o seu perfil.</p></div></div>
+        <div class="grid c2">
+          <div class="card"><h3>Conta</h3><p class="muted">Sessão atual: <b id="settingsSessionName">Usuário</b></p><button type="button" class="danger" onclick="logout()">Sair da conta</button></div>
+          <div class="card admin-only"><h3>Perfil do admin</h3><form id="adminProfileForm" class="form"><label class="full">Nome exibido<input id="adminName" required placeholder="Nome do admin"></label><div class="full"><button type="submit">Salvar nome</button></div></form></div>
+          <div class="card admin-only"><h3>Manutenção</h3><p class="muted">Use apenas quando o navegador estiver pesado ou com imagens antigas salvas.</p><div class="settings-actions"><button type="button" class="btn2" onclick="clearHeavyImages()">Limpar imagens pesadas</button><button type="button" class="btn2" onclick="hardResetSession()">Limpar sessão atual</button></div></div>
+          <div class="card danger-zone admin-only"><h3>Zona de risco</h3><p>Apaga cadastros, debates, contas e volta o app para o padrão inicial.</p><button type="button" class="danger" onclick="resetBrokenData()">Resetar dados do app</button></div>
+          <div id="settingsDebatersMount" class="full admin-only"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+<div id="debaterProfileModal" style="position:fixed;inset:0;z-index:100;background:rgba(10,20,45,.72);display:none;place-items:center;overflow:auto;padding:20px" onclick="if(event.target===this)closeDebaterProfile()">
+  <div style="width:min(600px,100%);background:#fff;border-radius:28px;overflow:hidden;box-shadow:0 30px 80px rgba(0,0,0,.35);position:relative;margin:auto">
+    <button type="button" onclick="closeDebaterProfile()" style="position:absolute;top:14px;right:14px;z-index:10;width:38px;height:38px;border-radius:50%;background:rgba(255,255,255,.9);color:#333;font-size:1.3rem;border:0;cursor:pointer;display:grid;place-items:center;line-height:1">×</button>
+    <div id="dpBanner" style="height:180px;background:linear-gradient(135deg,#071225,#103a79,#2d73c9)"></div>
+    <div style="display:grid;grid-template-columns:110px 1fr;gap:20px;padding:0 28px 20px;align-items:center">
+      <div id="dpPhoto" style="width:100px;height:100px;border-radius:28px;background:#eef5ff;color:#0f3f83;display:grid;place-items:center;font-size:1.7rem;font-weight:950;overflow:hidden;border:5px solid #fff;box-shadow:0 14px 36px rgba(15,23,42,.18);margin-top:-44px;justify-self:center"></div>
+      <div style="padding-top:10px"><h3 id="dpName" style="margin:0;font-size:1.55rem;color:#0f172a;line-height:1.1"></h3><p id="dpInfo" style="margin:6px 0 0;color:#5a6980;font-weight:700;font-size:.9rem"></p></div>
+    </div>
+    <div style="padding:0 24px 28px">
+      <div class="grid c3" id="dpMetrics" style="margin-bottom:18px"></div>
+      <div id="dpDebates"></div>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="script.js"></script>
+</body>
+</html>
