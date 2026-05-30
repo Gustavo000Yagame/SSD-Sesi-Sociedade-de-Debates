@@ -179,28 +179,60 @@ async function loginComGoogle() {
 window.loginComGoogle = loginComGoogle;
 
 async function carregarUsuario() {
-  const { data } = await supabaseClient.auth.getUser();
+  const { data, error } = await supabaseClient.auth.getUser();
 
-  if (data.user) {
-    const user = data.user;
+  if (error || !data.user) {
+    return false;
+  }
 
-    currentUser = {
+  const user = data.user;
+  const email = normalizeEmail(user.email);
+  const name = user.user_metadata.full_name || user.user_metadata.name || email;
+
+  let account = accountByEmail(email);
+
+  if (!account) {
+    const debater = {
+      id: uid(),
+      name,
+      className: '',
+      status: 'Ativo',
+      photo: '',
+      banner: '',
+      roles: []
+    };
+
+    account = {
       id: user.id,
+      name,
+      email,
+      password: '',
+      className: '',
+      debaterId: debater.id,
       role: 'student',
-      name: user.user_metadata.full_name || user.email,
-      email: user.email,
-      debaterId: '',
       authVersion: AUTH_VERSION
     };
 
-    safeStore(K.u, JSON.stringify(currentUser));
-
-    applyPermissions();
-    window.show('student');
+    D = [...D, debater];
+    A = [...A, account];
+    save();
   }
+
+  ensureDebaterForAccount(account);
+
+  currentUser = {
+    id: account.id || user.id,
+    role: account.role || 'student',
+    name: account.name || name,
+    email,
+    debaterId: account.debaterId || '',
+    authVersion: AUTH_VERSION
+  };
+
+  safeStore(K.u, JSON.stringify(currentUser));
+  return true;
 }
 
-carregarUsuario();
 
 async function sair() {
   await supabaseClient.auth.signOut();
@@ -927,5 +959,24 @@ window.closeDebaterProfile = function() {
 
   document.body.style.overflow = '';
 };
+
+
+function iniciarLoginSupabase() {
+  carregarUsuario().then(logado => {
+    applyPermissions();
+
+    if (logado && currentUser) {
+      window.show(currentUser.role === 'admin' ? 'overview' : 'student');
+    } else {
+      window.switchAuth('login');
+    }
+  });
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', iniciarLoginSupabase);
+} else {
+  iniciarLoginSupabase();
+}
 
 })();
