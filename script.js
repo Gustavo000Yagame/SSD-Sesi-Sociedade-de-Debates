@@ -149,9 +149,9 @@ const defaultAccounts=[
   {id:'a_demo',name:'Aluno SSD',email:'aluno@ssd.com',password:'ssd123',className:'1º E.M',debaterId:'d_demo',role:'student',authVersion:AUTH_VERSION}
 ];
 
-let D = readArray(K.d, defaultDebaters);
-let E = readArray(K.e, defaultEvents);
-let A = readArray(K.a, defaultAccounts);
+let D = [];
+let E = [];
+let A = [];
 let storageWarningShown=false;
 
 const state = {
@@ -187,45 +187,53 @@ async function carregarUsuario() {
 
   const user = data.user;
   const email = normalizeEmail(user.email);
-  const name = user.user_metadata.full_name || user.user_metadata.name || email;
+  const fallbackName = user.user_metadata.full_name || user.user_metadata.name || email;
 
-  let account = accountByEmail(email);
+  let { data: profile, error: profileError } = await supabaseClient
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .maybeSingle();
 
-  if (!account) {
-    const debater = {
-      id: user.id,
-      name,
-      className: '',
-      status: 'Ativo',
-      photo: '',
-      banner: '',
-      roles: []
-    };
-
-    account = {
-      id: user.id,
-      name,
-      email,
-      password: '',
-      className: '',
-      debaterId: user.id,
-      role: 'student',
-      authVersion: AUTH_VERSION
-    };
-
-    D = [...D, debater];
-    A = [...A, account];
-    save();
+  if (profileError) {
+    console.error('Erro buscando profile:', profileError);
   }
 
-  ensureDebaterForAccount(account);
+  if (!profile) {
+    const novoProfile = {
+      id: user.id,
+      name: fallbackName,
+      class_name: '',
+      photo: user.user_metadata.avatar_url || user.user_metadata.picture || '',
+      banner: '',
+      role: 'student'
+    };
+
+    const { data: criado, error: insertError } = await supabaseClient
+      .from('profiles')
+      .insert(novoProfile)
+      .select('*')
+      .single();
+
+    if (insertError) {
+      console.error('Erro criando profile:', insertError);
+      profile = novoProfile;
+    } else {
+      profile = criado;
+    }
+  }
+
+  const mapped = mapProfileRow(profile);
+  D = D.some(d => d.id === mapped.id)
+    ? D.map(d => d.id === mapped.id ? mapped : d)
+    : [...D, mapped];
 
   currentUser = {
-    id: account.id || user.id,
-    role: account.role || 'student',
-    name: account.name || name,
+    id: user.id,
+    role: profile.role || 'student',
+    name: profile.name || fallbackName,
     email,
-    debaterId: account.debaterId || '',
+    debaterId: user.id,
     authVersion: AUTH_VERSION
   };
 
@@ -242,7 +250,7 @@ async function sair() {
 async function loadDebaters() {
   const { data, error } =
     await window.supabaseClient
-      .from('debaters')
+      .from('profiles')
       .select('*');
 
   if (error) {
@@ -258,7 +266,7 @@ async function loadDebaters() {
 async function loadEvents() {
   const { data, error } =
     await window.supabaseClient
-      .from('events')
+      .from('debates')
       .select('*');
 
   if (error) {
@@ -274,7 +282,7 @@ async function loadEvents() {
 async function loadAccounts() {
   const { data, error } =
     await window.supabaseClient
-      .from('accounts')
+      .from('profiles')
       .select('*');
 
   if (error) {
@@ -571,7 +579,7 @@ async function loadEvents() {
 
   const { data, error } =
     await window.supabaseClient
-      .from('events')
+      .from('debates')
       .select('*');
 
   if(error){
@@ -589,7 +597,7 @@ async function loadAccounts() {
 
   const { data, error } =
     await window.supabaseClient
-      .from('accounts')
+      .from('profiles')
       .select('*');
 
   if(error){
@@ -770,6 +778,10 @@ window.delEvent=function(id){
   if(E.length===before){alert('Não consegui excluir este debate. Use Excluir todos os debates ou Resetar dados.');return}
   if($('#eId')&&$('#eId').value===id) resetEvent();
   if($('#judgeEventSelect')&&$('#judgeEventSelect').value===id) $('#judgeEventSelect').value='';
+  if(isUuid(id)){
+    supabaseClient.from('debate_scores').delete().eq('debate_id', id).then(({error})=>{ if(error) console.error('Erro excluindo notas:', error); });
+    supabaseClient.from('debates').delete().eq('id', id).then(({error})=>{ if(error) console.error('Erro excluindo debate:', error); });
+  }
   save();
   render();
 };
@@ -780,7 +792,7 @@ function selectDay(iso){selectedDate=iso;$('#eDate').value=iso;updateWeekday();r
 window.updateDateFromInput=function(){selectedDate=$('#eDate').value;viewDate=new Date(selectedDate+'T00:00');updateWeekday();renderCalendar();renderDayList()};
 function renderDayList(){const evs=E.filter(e=>e.date===selectedDate).sort(sortEvent);$('#dayTitle').textContent='Debates de '+new Date(selectedDate+'T00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'});$('#dayEvents').innerHTML=evs.map(eventCard).join('')||'<div class="empty">Nenhum debate neste dia.</div>'}
 function renderAllEvents(){const box=$('#allEvents');if(!box)return;box.innerHTML=E.slice().sort(sortEvent).map(eventCard).join('')||'<div class="empty">Nenhum debate cadastrado.</div>'}
-window.deleteAllEvents=function(){if(!requireAdmin('excluir debates'))return;if(!confirm('Excluir TODOS os debates?'))return;E=[];save();resetEvent();render()}
+window.deleteAllEvents=function(){if(!requireAdmin('excluir debates'))return;if(!confirm('Excluir TODOS os debates?'))return;supabaseClient.from('debate_scores').delete().neq('id','00000000-0000-0000-0000-000000000000').then(()=>supabaseClient.from('debates').delete().neq('id','00000000-0000-0000-0000-000000000000'));E=[];save();resetEvent();render()}
 
 function updateWeekday(){if($('#eDate').value)$('#eWeekday').value=weekday($('#eDate').value)}
 function normSearchText(value){return String(value||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
@@ -1036,13 +1048,13 @@ async function loadAll(){
       E = mapDebateRows(debatesRes.data, scoresRes.data || []);
       safeStore(K.e, JSON.stringify(E));
     }
-    A = readArray(K.a, defaultAccounts);
+    A = [];
     render && render();
   }catch(err){
     console.error('Erro carregando Supabase:', err);
-    D = readArray(K.d, defaultDebaters);
-    E = readArray(K.e, defaultEvents);
-    A = readArray(K.a, defaultAccounts);
+    D = [];
+    E = [];
+    A = [];
   }
 }
 function save(){
@@ -1111,6 +1123,9 @@ async function syncToSupabase(){
 }
 
 function iniciarLoginSupabase() {
+  localStorage.removeItem(K.d);
+  localStorage.removeItem(K.e);
+  localStorage.removeItem(K.a);
   loadAll().then(() => carregarUsuario()).then(logado => {
     if (logado && currentUser) {
       save();
