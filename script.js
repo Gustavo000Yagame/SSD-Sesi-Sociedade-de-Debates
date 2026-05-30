@@ -12,7 +12,13 @@ const ADMIN_EMAIL='admin@ssd.com';
 const ADMIN_PASSWORD='SSDadmin2026!';
 const SUPABASE_URL = 'https://cpfsxrpmaktsugbdrpfh.supabase.co'; 
 const SUPABASE_KEY = 'sb_publishable__HoVtpGTWDnq4gVbhPJV-g_wJwhllKy';
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: {
+    detectSessionInUrl: true,
+    persistSession: true,
+    autoRefreshToken: true
+  }
+});
 window.supabaseClient = supabaseClient;
 
 let adminProfile=safeParse(localStorage.getItem(K.admin),null);
@@ -179,13 +185,16 @@ async function loginComGoogle() {
 window.loginComGoogle = loginComGoogle;
 
 async function carregarUsuario() {
-  const { data, error } = await supabaseClient.auth.getUser();
+  const { data: sessionData } = await supabaseClient.auth.getSession();
+  let user = sessionData && sessionData.session ? sessionData.session.user : null;
 
-  if (error || !data.user) {
-    return false;
+  if (!user) {
+    const { data, error } = await supabaseClient.auth.getUser();
+    if (error || !data.user) {
+      return false;
+    }
+    user = data.user;
   }
-
-  const user = data.user;
   const email = normalizeEmail(user.email);
   const name = user.user_metadata.full_name || user.user_metadata.name || email;
 
@@ -521,7 +530,8 @@ window.hardResetSession=function(){
   applyPermissions();
   window.switchAuth('login');
 };
-window.logout=function(){
+window.logout=async function(){
+  await supabaseClient.auth.signOut();
   localStorage.removeItem(K.u);
   currentUser=null;
   applyPermissions();
@@ -961,14 +971,27 @@ window.closeDebaterProfile = function() {
 };
 
 
-function iniciarLoginSupabase() {
-  carregarUsuario().then(logado => {
-    applyPermissions();
+async function entrarNoSistema() {
+  const logado = await carregarUsuario();
+  applyPermissions();
 
-    if (logado && currentUser) {
-      window.show(currentUser.role === 'admin' ? 'overview' : 'student');
-    } else {
-      window.switchAuth('login');
+  if (logado && currentUser) {
+    window.show(currentUser.role === 'admin' ? 'overview' : 'student');
+
+    if (window.location.search || window.location.hash) {
+      window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+    }
+  } else {
+    window.switchAuth('login');
+  }
+}
+
+function iniciarLoginSupabase() {
+  entrarNoSistema();
+
+  supabaseClient.auth.onAuthStateChange((_event, session) => {
+    if (session && session.user) {
+      entrarNoSistema();
     }
   });
 }
