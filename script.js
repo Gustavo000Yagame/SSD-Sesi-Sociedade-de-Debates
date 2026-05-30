@@ -12,13 +12,7 @@ const ADMIN_EMAIL='admin@ssd.com';
 const ADMIN_PASSWORD='SSDadmin2026!';
 const SUPABASE_URL = 'https://cpfsxrpmaktsugbdrpfh.supabase.co'; 
 const SUPABASE_KEY = 'sb_publishable__HoVtpGTWDnq4gVbhPJV-g_wJwhllKy';
-const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
-  auth: {
-    detectSessionInUrl: true,
-    persistSession: true,
-    autoRefreshToken: true
-  }
-});
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 window.supabaseClient = supabaseClient;
 
 let adminProfile=safeParse(localStorage.getItem(K.admin),null);
@@ -185,16 +179,13 @@ async function loginComGoogle() {
 window.loginComGoogle = loginComGoogle;
 
 async function carregarUsuario() {
-  const { data: sessionData } = await supabaseClient.auth.getSession();
-  let user = sessionData && sessionData.session ? sessionData.session.user : null;
+  const { data, error } = await supabaseClient.auth.getUser();
 
-  if (!user) {
-    const { data, error } = await supabaseClient.auth.getUser();
-    if (error || !data.user) {
-      return false;
-    }
-    user = data.user;
+  if (error || !data.user) {
+    return false;
   }
+
+  const user = data.user;
   const email = normalizeEmail(user.email);
   const name = user.user_metadata.full_name || user.user_metadata.name || email;
 
@@ -202,7 +193,7 @@ async function carregarUsuario() {
 
   if (!account) {
     const debater = {
-      id: uid(),
+      id: user.id,
       name,
       className: '',
       status: 'Ativo',
@@ -217,7 +208,7 @@ async function carregarUsuario() {
       email,
       password: '',
       className: '',
-      debaterId: debater.id,
+      debaterId: user.id,
       role: 'student',
       authVersion: AUTH_VERSION
     };
@@ -530,8 +521,7 @@ window.hardResetSession=function(){
   applyPermissions();
   window.switchAuth('login');
 };
-window.logout=async function(){
-  await supabaseClient.auth.signOut();
+window.logout=function(){
   localStorage.removeItem(K.u);
   currentUser=null;
   applyPermissions();
@@ -971,27 +961,166 @@ window.closeDebaterProfile = function() {
 };
 
 
-async function entrarNoSistema() {
-  const logado = await carregarUsuario();
-  applyPermissions();
 
-  if (logado && currentUser) {
-    window.show(currentUser.role === 'admin' ? 'overview' : 'student');
+// ===== SUPABASE DATABASE ADAPTER =====
+function isUuid(value){
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value||''));
+}
+function roleFromDebater(d){
+  if(d && Array.isArray(d.roles) && d.roles.includes('judge')) return 'judge';
+  return 'student';
+}
+function mapProfileRow(row){
+  return {
+    id: row.id,
+    name: row.name || 'Aluno SSD',
+    className: row.class_name || '',
+    status: 'Ativo',
+    photo: row.photo || '',
+    banner: row.banner || '',
+    roles: row.role === 'judge' ? ['judge'] : []
+  };
+}
+function mapDebateRows(debates, scoreRows){
+  const byDebate = {};
+  (scoreRows || []).forEach(r => {
+    if(!byDebate[r.debate_id]) byDebate[r.debate_id] = [];
+    byDebate[r.debate_id].push(r);
+  });
+  return (debates || []).map(ev => {
+    const rows = byDebate[ev.id] || [];
+    const scores = {};
+    const lineup = rows.filter(r => r.user_id).map(r => {
+      if(r.content !== null && r.content !== undefined && r.style !== null && r.style !== undefined && r.strategy !== null && r.strategy !== undefined){
+        scores[r.user_id] = {
+          content: Number(r.content),
+          style: Number(r.style),
+          strategy: Number(r.strategy),
+          total: Number(r.total ?? (Number(r.content)+Number(r.style)+Number(r.strategy)))
+        };
+      }
+      return { role: r.role || 'Debatedor', debaterId: r.user_id };
+    });
+    return {
+      id: ev.id,
+      date: ev.date || '',
+      time: ev.time || '',
+      motion: ev.motion || '',
+      format: ev.format || '',
+      place: ev.place || '',
+      judge: ev.judge || '',
+      winner: ev.winner || '',
+      decision: ev.decision || '',
+      lineup,
+      scores
+    };
+  });
+}
+async function loadAll(){
+  ensureArrays();
+  try{
+    const [profilesRes, debatesRes, scoresRes] = await Promise.all([
+      supabaseClient.from('profiles').select('*'),
+      supabaseClient.from('debates').select('*'),
+      supabaseClient.from('debate_scores').select('*')
+    ]);
+    if(profilesRes.error) console.error('Erro profiles:', profilesRes.error);
+    if(debatesRes.error) console.error('Erro debates:', debatesRes.error);
+    if(scoresRes.error) console.error('Erro debate_scores:', scoresRes.error);
 
-    if (window.location.search || window.location.hash) {
-      window.history.replaceState({}, document.title, window.location.origin + window.location.pathname);
+    if(!profilesRes.error && Array.isArray(profilesRes.data)){
+      D = profilesRes.data.map(mapProfileRow);
+      safeStore(K.d, JSON.stringify(D));
     }
-  } else {
-    window.switchAuth('login');
+    if(!debatesRes.error && Array.isArray(debatesRes.data)){
+      E = mapDebateRows(debatesRes.data, scoresRes.data || []);
+      safeStore(K.e, JSON.stringify(E));
+    }
+    A = readArray(K.a, defaultAccounts);
+    render && render();
+  }catch(err){
+    console.error('Erro carregando Supabase:', err);
+    D = readArray(K.d, defaultDebaters);
+    E = readArray(K.e, defaultEvents);
+    A = readArray(K.a, defaultAccounts);
+  }
+}
+function save(){
+  ensureArrays();
+  safeStore(K.d, JSON.stringify(D));
+  safeStore(K.e, JSON.stringify(E));
+  saveAccounts();
+  syncToSupabase();
+  return true;
+}
+async function syncToSupabase(){
+  try{
+    const validProfiles = D.filter(d => isUuid(d.id)).map(d => ({
+      id: d.id,
+      name: d.name || 'Aluno SSD',
+      class_name: d.className || '',
+      photo: d.photo || '',
+      banner: d.banner || '',
+      role: roleFromDebater(d)
+    }));
+    if(validProfiles.length){
+      const { error } = await supabaseClient.from('profiles').upsert(validProfiles, { onConflict: 'id' });
+      if(error) console.error('Erro salvando profiles:', error);
+    }
+
+    const validDebates = E.filter(ev => isUuid(ev.id)).map(ev => ({
+      id: ev.id,
+      date: ev.date || null,
+      time: ev.time || null,
+      motion: ev.motion || '',
+      format: ev.format || '',
+      place: ev.place || '',
+      judge: ev.judge || '',
+      winner: ev.winner || '',
+      decision: ev.decision || '',
+      created_by: currentUser && isUuid(currentUser.id) ? currentUser.id : null
+    }));
+    if(validDebates.length){
+      const { error } = await supabaseClient.from('debates').upsert(validDebates, { onConflict: 'id' });
+      if(error) console.error('Erro salvando debates:', error);
+    }
+
+    for(const ev of E.filter(ev => isUuid(ev.id))){
+      await supabaseClient.from('debate_scores').delete().eq('debate_id', ev.id);
+      const rows = (ev.lineup || []).filter(l => isUuid(l.debaterId)).map(l => {
+        const sc = (ev.scores || {})[l.debaterId] || {};
+        const hasScore = sc.content !== undefined && sc.content !== '' && sc.style !== undefined && sc.style !== '' && sc.strategy !== undefined && sc.strategy !== '';
+        return {
+          debate_id: ev.id,
+          user_id: l.debaterId,
+          role: l.role || '',
+          content: hasScore ? Number(sc.content) : null,
+          style: hasScore ? Number(sc.style) : null,
+          strategy: hasScore ? Number(sc.strategy) : null,
+          total: hasScore ? Number(sc.total ?? (Number(sc.content)+Number(sc.style)+Number(sc.strategy))) : null
+        };
+      });
+      if(rows.length){
+        const { error } = await supabaseClient.from('debate_scores').insert(rows);
+        if(error) console.error('Erro salvando debate_scores:', error);
+      }
+    }
+  }catch(err){
+    console.error('Erro sincronizando Supabase:', err);
   }
 }
 
 function iniciarLoginSupabase() {
-  entrarNoSistema();
+  loadAll().then(() => carregarUsuario()).then(logado => {
+    if (logado && currentUser) {
+      save();
+    }
+    applyPermissions();
 
-  supabaseClient.auth.onAuthStateChange((_event, session) => {
-    if (session && session.user) {
-      entrarNoSistema();
+    if (logado && currentUser) {
+      window.show(currentUser.role === 'admin' ? 'overview' : 'student');
+    } else {
+      window.switchAuth('login');
     }
   });
 }
