@@ -16,10 +16,17 @@
         <h1>Acesse a SESI Sociedade de Debates:</h1>
       </div>
       <div class="login-panel">
+        
+        <button type="button" id="googleLoginBtn" class="google-btn" onclick="loginComGoogle()">
+          <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" width="20" alt="Logo Google">
+          Entrar com Google
+        </button>
+
         <div class="auth-tabs" role="tablist" aria-label="Alternar autenticação">
-          <button type="button" id="loginTab" class="on" role="tab" aria-controls="loginBox">Login</button>
-          <button type="button" id="signupTab" role="tab" aria-controls="signupBox">Criar conta</button>
+          <button type="button" id="tab-login" class="on" onclick="switchAuth('login')">Login</button>
+          <button type="button" id="tab-register" onclick="switchAuth('register')">Criar Conta</button>
         </div>
+        
         <div id="loginBox" class="auth-box on">
           <h2>Login</h2>
           <form id="loginForm" class="form">
@@ -29,6 +36,7 @@
           </form>
           <p id="loginError" class="red auth-message" style="display:none"></p>
         </div>
+
         <div id="signupBox" class="auth-box">
           <h2>Criar conta</h2>
           <form id="signupForm" class="form">
@@ -53,6 +61,7 @@
       </div>
     </div>
   </div>
+
   <div class="app">
     <aside>
       <button type="button" class="menu-toggle" onclick="toggleNav()" aria-label="Abrir abas" title="Abrir abas">☰</button>
@@ -156,6 +165,7 @@
     </div>
   </div>
 </div>
-  <script src="script.js"></script>
-</body>
 </html>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="script.js"></script>
+</body>

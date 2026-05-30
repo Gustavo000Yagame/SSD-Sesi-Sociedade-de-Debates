@@ -10,6 +10,11 @@ const K = {
 const AUTH_VERSION=2;
 const ADMIN_EMAIL='admin@ssd.com';
 const ADMIN_PASSWORD='SSDadmin2026!';
+const SUPABASE_URL = 'https://cpfsxrpmaktsugbdrpfh.supabase.co'; 
+const SUPABASE_KEY = 'sb_publishable__HoVtpGTWDnq4gVbhPJV-g_wJwhllKy';
+const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+window.supabaseClient = supabaseClient;
+
 let adminProfile=safeParse(localStorage.getItem(K.admin),null);
 if(!adminProfile||typeof adminProfile!=='object')adminProfile={name:'Admin SSD'};
 adminProfile.name=String(adminProfile.name||'Admin SSD').trim()||'Admin SSD';
@@ -154,6 +159,53 @@ const state = {
   events: [],
   accounts: []
 };
+
+async function loginComGoogle() {
+  const { error } = await supabaseClient.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo: window.location.origin + window.location.pathname,
+      queryParams: {
+        prompt: 'select_account'
+      }
+    }
+  });
+
+  if (error) {
+    alert(error.message);
+  }
+}
+
+window.loginComGoogle = loginComGoogle;
+
+async function carregarUsuario() {
+  const { data } = await supabaseClient.auth.getUser();
+
+  if (data.user) {
+    const user = data.user;
+
+    currentUser = {
+      id: user.id,
+      role: 'student',
+      name: user.user_metadata.full_name || user.email,
+      email: user.email,
+      debaterId: '',
+      authVersion: AUTH_VERSION
+    };
+
+    safeStore(K.u, JSON.stringify(currentUser));
+
+    applyPermissions();
+    window.show('student');
+  }
+}
+
+carregarUsuario();
+
+async function sair() {
+  await supabaseClient.auth.signOut();
+  location.reload();
+}
 
 async function loadDebaters() {
   const { data, error } =
@@ -305,8 +357,28 @@ function sectionParagraphs(text){
   }).join('')
 }
 function panelHTML(item,i){return '<div class="card panel '+(i===0?'on':'')+'" id="p-'+esc(item.id)+'"><h3>'+esc(item.title)+'</h3>'+sectionParagraphs(item.text)+'</div>'}
-$('#tabs').innerHTML=manual.map((item,i)=>'<button class="'+(i===0?'on':'')+'" data-p="'+esc(item.id)+'">'+esc(item.tab||item.title)+'</button>').join('');
-$('#manualPanels').innerHTML=manual.map(panelHTML).join('');
+
+const tabs = $('#tabs');
+
+if (tabs) {
+  tabs.innerHTML = manual.map((item, i) =>
+    '<button class="' + (i === 0 ? 'on' : '') +
+    '" data-p="' + esc(item.id) + '">' +
+    esc(item.tab || item.title) +
+    '</button>'
+  ).join('');
+} else {
+  console.error('Elemento #tabs não encontrado');
+}
+
+const manualPanels = $('#manualPanels');
+
+if (manualPanels) {
+  manualPanels.innerHTML = manual.map(panelHTML).join('');
+} else {
+  console.error('Elemento #manualPanels não encontrado');
+}
+
 window.toggleFullManual=function(){const box=$('#fullManual');const open=!box.classList.contains('on');box.classList.toggle('on',open);box.innerHTML=open?'<h3>Apostila completa em português</h3><div class="manual-source">Material traduzido e adaptado para a SSD<small>Base: WSDC Handbook 2025 e Judge Training 2024.</small></div>'+manual.map(x=>'<h4>'+esc(x.title)+'</h4>'+sectionParagraphs(x.text)).join(''):'';if(open)box.scrollIntoView({behavior:'smooth',block:'start'})};
 
 function currentDebaterForAuth(){return D.find(d=>currentUser&&d.id===currentUser.debaterId)}
@@ -722,26 +794,138 @@ if(debatersSection&&debatersMount){
   debatersSection.classList.add('settings-debaters');
   debatersMount.appendChild(debatersSection);
 }
-window.viewDebaterProfile=function(id){
-  const d=D.find(x=>x.id===id);if(!d)return;
-  const s=stats(d.id);
-  const ini=d.name.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();
-  const modal=document.getElementById('debaterProfileModal');
-  document.getElementById('dpBanner').innerHTML=d.banner?'<img src="'+esc(d.banner)+'" style="width:100%;height:100%;object-fit:cover" alt="">':'';
-  document.getElementById('dpPhoto').innerHTML=d.photo?'<img src="'+esc(d.photo)+'" style="width:100%;height:100%;object-fit:cover" alt="'+esc(d.name)+'">':esc(ini);
-  document.getElementById('dpName').textContent=d.name;
-  document.getElementById('dpInfo').textContent=(d.className||'Sem turma')+' • '+d.status+((d.roles||[]).includes('judge')?' • Juiz':'');
-  document.getElementById('dpMetrics').innerHTML=[metric('Média geral',s.total?s.total.toFixed(1):'—','Debates avaliados: '+s.scored,s.total?s.total/80*100:5),metric('Conteúdo',s.content?s.content.toFixed(1):'—','Linha de conteúdo',s.content?s.content/32*100:5),metric('Estilo',s.style?s.style.toFixed(1):'—','Clareza e persuasão',s.style?s.style/32*100:5)].join('');
-  const myEvs=E.filter(ev=>(ev.lineup||[]).some(l=>l.debaterId===d.id)).sort(sortEvent);
-  const debatesHtml=myEvs.slice(0,5).map(ev=>{const sc=(ev.scores||{})[d.id];return '<p style="margin:8px 0;padding:10px;background:#f8fbff;border-radius:12px"><b>'+esc(ev.motion)+'</b><br><small class="muted">'+esc(ev.date+' · '+ev.time+' · '+ev.format)+'</small><br>'+(sc?'<span class="pill green">Total: '+esc(sc.total)+'</span> <span class="pill">C: '+esc(sc.content)+'</span> <span class="pill">E: '+esc(sc.style)+'</span> <span class="pill">Est: '+esc(sc.strategy)+'</span>':'<span class="pill yellow">Sem nota</span>')+'</p>'}).join('');
-  document.getElementById('dpDebates').innerHTML='<h4 style="margin:0 0 10px;color:#0f3f83">Debates ('+myEvs.length+')</h4>'+(debatesHtml||'<div class="empty">Sem debates registrados.</div>');
-  modal.style.display='grid';
-  document.body.style.overflow='hidden';
+
+window.viewDebaterProfile = function(id) {
+  const d = D.find(x => x.id === id);
+
+  if (!d) {
+    console.warn('Debatedor não encontrado:', id);
+    return;
+  }
+
+  const s = stats(d.id);
+
+  const ini = (d.name || '?')
+    .split(' ')
+    .map(x => x[0])
+    .slice(0, 2)
+    .join('')
+    .toUpperCase();
+
+  const modal = document.getElementById('debaterProfileModal');
+
+  if (!modal) {
+    console.error('Modal debaterProfileModal não encontrado.');
+    return;
+  }
+
+  const dpBanner = document.getElementById('dpBanner');
+  const dpPhoto = document.getElementById('dpPhoto');
+  const dpName = document.getElementById('dpName');
+  const dpInfo = document.getElementById('dpInfo');
+  const dpMetrics = document.getElementById('dpMetrics');
+  const dpDebates = document.getElementById('dpDebates');
+
+  if (dpBanner) {
+    dpBanner.innerHTML = d.banner
+      ? `<img src="${esc(d.banner)}" style="width:100%;height:100%;object-fit:cover" alt="">`
+      : '';
+  }
+
+  if (dpPhoto) {
+    dpPhoto.innerHTML = d.photo
+      ? `<img src="${esc(d.photo)}" style="width:100%;height:100%;object-fit:cover" alt="${esc(d.name)}">`
+      : esc(ini);
+  }
+
+  if (dpName) {
+    dpName.textContent = d.name || 'Sem nome';
+  }
+
+  if (dpInfo) {
+    dpInfo.textContent =
+      `${d.className || 'Sem turma'} • ${d.status || 'Sem status'}` +
+      ((d.roles || []).includes('judge') ? ' • Juiz' : '');
+  }
+
+  if (dpMetrics) {
+    dpMetrics.innerHTML = [
+      metric(
+        'Média geral',
+        s.total ? s.total.toFixed(1) : '—',
+        'Debates avaliados: ' + (s.scored || 0),
+        s.total ? (s.total / 80) * 100 : 5
+      ),
+      metric(
+        'Conteúdo',
+        s.content ? s.content.toFixed(1) : '—',
+        'Linha de conteúdo',
+        s.content ? (s.content / 32) * 100 : 5
+      ),
+      metric(
+        'Estilo',
+        s.style ? s.style.toFixed(1) : '—',
+        'Clareza e persuasão',
+        s.style ? (s.style / 32) * 100 : 5
+      )
+    ].join('');
+  }
+
+  const myEvs = E
+    .filter(ev =>
+      (ev.lineup || []).some(
+        l => l && l.debaterId === d.id
+      )
+    )
+    .sort(sortEvent);
+
+  const debatesHtml = myEvs
+    .slice(0, 5)
+    .map(ev => {
+      const sc = (ev.scores || {})[d.id];
+
+      return `
+        <p style="margin:8px 0;padding:10px;background:#f8fbff;border-radius:12px">
+          <b>${esc(ev.motion || 'Sem moção')}</b><br>
+          <small class="muted">
+            ${esc(`${ev.date || ''} · ${ev.time || ''} · ${ev.format || ''}`)}
+          </small><br>
+          ${
+            sc
+              ? `
+                <span class="pill green">Total: ${esc(sc.total)}</span>
+                <span class="pill">C: ${esc(sc.content)}</span>
+                <span class="pill">E: ${esc(sc.style)}</span>
+                <span class="pill">Est: ${esc(sc.strategy)}</span>
+              `
+              : '<span class="pill yellow">Sem nota</span>'
+          }
+        </p>
+      `;
+    })
+    .join('');
+
+  if (dpDebates) {
+    dpDebates.innerHTML =
+      `<h4 style="margin:0 0 10px;color:#0f3f83">
+        Debates (${myEvs.length})
+      </h4>` +
+      (debatesHtml ||
+        '<div class="empty">Sem debates registrados.</div>');
+  }
+
+  modal.style.display = 'grid';
+  document.body.style.overflow = 'hidden';
 };
-window.closeDebaterProfile=function(){
-  document.getElementById('debaterProfileModal').style.display='none';
-  document.body.style.overflow='';
+
+window.closeDebaterProfile = function() {
+  const modal = document.getElementById('debaterProfileModal');
+
+  if (modal) {
+    modal.style.display = 'none';
+  }
+
+  document.body.style.overflow = '';
 };
-function runTests(){console.assert(Array.isArray(D),'Debaters should be an array');console.assert(Array.isArray(E),'Events should be an array');console.assert(Array.isArray(A),'Accounts should be an array');console.assert(typeof esc('<x>')==='string','esc should return string');console.assert(manual.length>=8,'Manual should have sections');console.assert(roles.length===8,'WSDC lineup should have 8 slots');console.assert(typeof window.delEvent==='function','delEvent should exist');console.assert(typeof window.loadDebaterPhoto==='function','photo upload should exist');console.assert(typeof window.saveMyProfile==='function','student profile save should exist');console.assert(typeof canManageEvents==='function','permission helpers should exist');console.assert(typeof currentRoles==='function','combined roles should exist');console.assert(typeof requireSection==='function','section guard should exist');console.assert(typeof window.toggleNav==='function','mobile nav toggle should exist');console.assert(currentRoles().includes('student')||!currentUser||isAdmin(),'logged non-admin users should be students by default');console.assert(typeof normalizeCurrentUser==='function','login normalization should exist');console.assert(typeof safeStore==='function','safe storage should exist');console.assert(typeof window.switchAuth==='function','auth tabs should exist');console.assert(typeof window.hardResetSession==='function','hard reset login should exist');console.assert(typeof window.logout==='function','logout should exist');console.assert(typeof window.delDebater==='function','delete member should exist');console.assert(typeof window.clearHeavyImages==='function','clear images should exist');}
-runTests();window.resetEvent();applyPermissions();if(currentUser){window.show(currentUser.role==='student'?'student':'overview')}else{render();}
+
 })();
