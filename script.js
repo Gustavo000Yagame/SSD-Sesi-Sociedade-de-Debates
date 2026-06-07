@@ -1,5 +1,8 @@
 (function(){
 'use strict';
+
+function safeParse(value,fallback){try{return JSON.parse(value)}catch(e){return fallback}}
+
 const K = {
   u: 'ssd_current_user_v1',
   admin: 'ssd_admin_profile_v1',
@@ -152,13 +155,7 @@ const defaultAccounts=[
 let D = [];
 let E = [];
 let A = [];
-let storageWarningShown=false;
 
-const state = {
-  debaters: [],
-  events: [],
-  accounts: []
-};
 
 async function loginComGoogle() {
   const { error } = await supabaseClient.auth.signInWithOAuth({
@@ -243,65 +240,8 @@ async function carregarUsuario() {
 }
 
 
-async function sair() {
-  await supabaseClient.auth.signOut();
-  location.reload();
-}
 
-async function loadDebaters() {
-  const { data, error } =
-    await window.supabaseClient
-      .from('profiles')
-      .select('*');
 
-  if (error) {
-    console.error(error);
-    return;
-  }
-
-  D = Array.isArray(data) ? data : [];
-
-  render();
-}
-
-async function loadEvents() {
-  const { data, error } =
-    await window.supabaseClient
-      .from('debates')
-      .select('*');
-
-  if (error) {
-    console.error(error);
-    return;
-  }
-
-  E = Array.isArray(data) ? data : [];
-
-  render();
-}
-
-async function loadAccounts() {
-  const { data, error } =
-    await window.supabaseClient
-      .from('profiles')
-      .select('*');
-
-  if (error) {
-    console.error(error);
-    return;
-  }
-
-  A = Array.isArray(data) ? data : [];
-
-  render();
-}
-async function loadAll(){
-  D = readArray(K.d, defaultDebaters);
-  E = readArray(K.e, defaultEvents);
-  A = readArray(K.a, defaultAccounts);
-}
-
-loadAll();
 
 let currentUser = safeParse(localStorage.getItem(K.u), null);
 
@@ -329,9 +269,7 @@ safeStore(K.u, JSON.stringify(currentUser));
 normalizeCurrentUser();
 
 let viewDate=new Date();
-let selectedDate=new Date().toISOString().slice(0,10);
-function safeParse(value,fallback){try{return JSON.parse(value)}catch(e){return fallback}}
-function cloneArray(items){return (Array.isArray(items)?items:[]).map(item=>({...item}))}
+let selectedDate=new Date().toISOString().slice(0,10);function cloneArray(items){return (Array.isArray(items)?items:[]).map(item=>({...item}))}
 function readArray(key,fallback){
   const parsed=safeParse(localStorage.getItem(key),fallback);
   if(Array.isArray(parsed))return parsed;
@@ -347,47 +285,8 @@ function ensureArrays(){
 function $(s){return document.querySelector(s)}
 function $$(s){return Array.from(document.querySelectorAll(s))}
 function esc(x){return String(x==null?'':x).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
-async function saveAll(){
-  return save();
-}
 function safeStore(key,value){
   try{localStorage.setItem(key,value);return true}catch(e){console.warn('Não foi possível salvar no navegador.',e);return false}
-}
-function save(){
-  ensureArrays();
-  let okD=safeStore(K.d,JSON.stringify(D));
-  let okE=safeStore(K.e,JSON.stringify(E));
-  let okA=saveAccounts();
-  if(okD&&okE&&okA)return true;
-
-  // Recuperação automática: o erro mais comum no protótipo HTML é excesso de imagem/base64 no localStorage.
-  // Primeiro remove banners, que costumam ser maiores. Se ainda falhar, remove fotos também.
-  D=D.map(d=>({...d,banner:''}));
-  okD=safeStore(K.d,JSON.stringify(D));
-  okE=safeStore(K.e,JSON.stringify(E));
-  okA=saveAccounts();
-  if(okD&&okE&&okA){
-    if(!storageWarningShown){
-      storageWarningShown=true;
-      alert('O navegador estava sem espaço. Removi banners pesados para conseguir salvar.');
-    }
-    return true;
-  }
-
-  D=D.map(d=>({...d,photo:'',banner:''}));
-  okD=safeStore(K.d,JSON.stringify(D));
-  okE=safeStore(K.e,JSON.stringify(E));
-  okA=saveAccounts();
-  if(okD&&okE&&okA){
-    if(!storageWarningShown){
-      storageWarningShown=true;
-      alert('O navegador estava sem espaço. Removi imagens pesadas para conseguir salvar.');
-    }
-    return true;
-  }
-
-  alert('Não consegui salvar no navegador. Entre como admin e abra Configurações para fazer a manutenção do app.');
-  return false;
 }
 function sectionParagraphs(text){
   return String(text||'').split(/\n{2,}/).map(block=>{
@@ -473,8 +372,8 @@ window.switchAuth=function(mode){
   const login=mode!=='signup';
   $('#loginBox').classList.toggle('on',login);
   $('#signupBox').classList.toggle('on',!login);
-  if($('#loginTab'))$('#loginTab').classList.toggle('on',login);
-  if($('#signupTab'))$('#signupTab').classList.toggle('on',!login);
+  if($('#tab-login'))$('#tab-login').classList.toggle('on',login);
+  if($('#tab-register'))$('#tab-register').classList.toggle('on',!login);
   setAuthMessage('#loginError','');
   setAuthMessage('#signupError','');
 };
@@ -558,58 +457,7 @@ function applyPermissions(){
   }
 }
 
-async function loadDebaters() {
 
-  const { data, error } =
-    await window.supabaseClient
-      .from('debaters')
-      .select('*');
-
-  if(error){
-    console.error(error);
-    return;
-  }
-
-  D = Array.isArray(data) ? data : [];
-  render();
-}
-
-// Dados persistem localmente; chamadas remotas ficam desativadas para evitar falhas 401 no protótipo.
-
-async function loadEvents() {
-
-  const { data, error } =
-    await window.supabaseClient
-      .from('debates')
-      .select('*');
-
-  if(error){
-    console.error(error);
-    return;
-  }
-
-  E = Array.isArray(data) ? data : [];
-  render();
-}
-
-// Dados persistem localmente; chamadas remotas ficam desativadas para evitar falhas 401 no protótipo.
-
-async function loadAccounts() {
-
-  const { data, error } =
-    await window.supabaseClient
-      .from('profiles')
-      .select('*');
-
-  if(error){
-    console.error(error);
-    return;
-  }
-
-  A = Array.isArray(data) ? data : [];
-}
-
-// Dados persistem localmente; chamadas remotas ficam desativadas para evitar falhas 401 no protótipo.
 
 
 function accountByEmail(email){
@@ -663,8 +511,8 @@ if($('#adminProfileForm'))$('#adminProfileForm').addEventListener('submit',e=>{e
     supabaseClient.from('profiles').update({name}).eq('id',currentUser.id).then(({error})=>{if(error)console.error('Erro atualizando nome admin:',error);});
   }
   alert('Nome do admin atualizado.')});
-if($('#loginTab'))$('#loginTab').addEventListener('click',()=>window.switchAuth('login'));
-if($('#signupTab'))$('#signupTab').addEventListener('click',()=>window.switchAuth('signup'));
+if($('#tab-login'))$('#tab-login').addEventListener('click',()=>window.switchAuth('login'));
+if($('#tab-register'))$('#tab-register').addEventListener('click',()=>window.switchAuth('signup'));
 window.show=function(id){id=requireSection(id);$$('.sec').forEach(x=>x.classList.toggle('on',x.id===id));$$('.nav button').forEach(x=>x.classList.toggle('on',x.dataset.s===id));$('.app').classList.remove('nav-open');const btn=$('.menu-toggle');if(btn){btn.setAttribute('aria-label','Abrir abas');btn.title='Abrir abas';btn.textContent='☰'}render()};
 $('#nav').addEventListener('click',e=>{if(e.target.dataset.s)window.show(e.target.dataset.s)});
 $('#tabs').addEventListener('click',e=>{if(!e.target.dataset.p)return;openManual(e.target.dataset.p)});
@@ -718,7 +566,7 @@ function renderStudent(){
   $('#studentMetrics').innerHTML=[metric('Minha média',s.total?s.total.toFixed(1):'—','Debates avaliados: '+s.scored,s.total?s.total/80*100:5),metric('Conteúdo',s.content?s.content.toFixed(1):'—','Linha de conteúdo',s.content?s.content/32*100:5),metric('Estilo',s.style?s.style.toFixed(1):'—','Clareza e persuasão',s.style?s.style/32*100:5)].join('');
   const myEvents=E.filter(ev=>(ev.lineup||[]).some(l=>l.debaterId===d.id)).sort(sortEvent);
   $('#studentEvents').innerHTML=myEvents.map(eventCard).join('')||'<div class="empty">Você ainda não está escalado em debates.</div>';
-  $('#studentScores').innerHTML=myEvents.map(ev=>{const sc=(ev.scores||{})[d.id];return '<p><b>'+esc(ev.motion)+'</b><br><small class="muted">'+esc(ev.date+' '+ev.time)+'</small><br>'+(sc?'<span class="pill green">Total: '+esc(sc.total)+'</span><span class="pill">Conteúdo: '+esc(sc.content)+'</span><span class="pill">Estilo: '+esc(sc.style)+'</span><span class="pill">Estratégia: '+esc(sc.strategy)+'</span>':'<span class="pill yellow">Sem nota ainda</span>')+'</p>'}).join('')||'<div class="empty">Sem notas registradas.</div>';
+  $('#studentScores').innerHTML=myEvents.map(ev=>{const sc=(ev.scores||{})[d.id];return '<p><b>'+esc(ev.motion)+'</b><br><small class="muted">'+esc(ev.date+' '+fmtTime(ev.time))+'</small><br>'+(sc?'<span class="pill green">Total: '+esc(sc.total)+'</span><span class="pill">Conteúdo: '+esc(sc.content)+'</span><span class="pill">Estilo: '+esc(sc.style)+'</span><span class="pill">Estratégia: '+esc(sc.strategy)+'</span>':'<span class="pill yellow">Sem nota ainda</span>')+'</p>'}).join('')||'<div class="empty">Sem notas registradas.</div>';
 }
 window.editMyProfile=function(){const d=currentDebater();if(!d)return;profileDraft={photo:d.photo||'',banner:d.banner||''};$('#studentProfileEditor').classList.add('on');show('student')}
 window.cancelMyProfile=function(){const d=currentDebater();profileDraft={photo:d.photo||'',banner:d.banner||''};$('#studentProfileEditor').classList.remove('on');renderStudent()}
@@ -820,7 +668,7 @@ function selectDay(iso){selectedDate=iso;$('#eDate').value=iso;updateWeekday();r
 window.updateDateFromInput=function(){selectedDate=$('#eDate').value;viewDate=new Date(selectedDate+'T00:00');updateWeekday();renderCalendar();renderDayList()};
 function renderDayList(){const evs=E.filter(e=>e.date===selectedDate).sort(sortEvent);$('#dayTitle').textContent='Debates de '+new Date(selectedDate+'T00:00').toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'long'});$('#dayEvents').innerHTML=evs.map(eventCard).join('')||'<div class="empty">Nenhum debate neste dia.</div>'}
 function renderAllEvents(){const box=$('#allEvents');if(!box)return;box.innerHTML=E.slice().sort(sortEvent).map(eventCard).join('')||'<div class="empty">Nenhum debate cadastrado.</div>'}
-window.deleteAllEvents=function(){if(!requireAdmin('excluir debates'))return;if(!confirm('Excluir TODOS os debates?'))return;supabaseClient.from('debate_scores').delete().neq('id','00000000-0000-0000-0000-000000000000').then(()=>supabaseClient.from('debates').delete().neq('id','00000000-0000-0000-0000-000000000000'));E=[];save();resetEvent();render()}
+window.deleteAllEvents=function(){if(!requireAdmin('excluir debates'))return;if(!confirm('Excluir TODOS os debates?'))return;supabaseClient.from('debate_scores').delete().neq('debate_id','00000000-0000-0000-0000-000000000000').then(()=>supabaseClient.from('debates').delete().neq('id','00000000-0000-0000-0000-000000000000'));E=[];save();resetEvent();render()}
 
 function updateWeekday(){if($('#eDate').value)$('#eWeekday').value=weekday($('#eDate').value)}
 function normSearchText(value){return String(value||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'')}
@@ -960,7 +808,7 @@ window.viewDebaterProfile = function(id) {
         <p style="margin:8px 0;padding:10px;background:#f8fbff;border-radius:12px">
           <b>${esc(ev.motion || 'Sem moção')}</b><br>
           <small class="muted">
-            ${esc(`${ev.date || ''} · ${ev.time || ''} · ${ev.format || ''}`)}
+            ${esc(`${ev.date || ''} · ${fmtTime(ev.time || '')} · ${ev.format || ''}`)}
           </small><br>
           ${
             sc
