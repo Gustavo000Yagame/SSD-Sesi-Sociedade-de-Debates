@@ -166,7 +166,8 @@ async function loginComGoogle() {
     options: {
       redirectTo: window.location.origin + window.location.pathname,
       queryParams: {
-        prompt: 'select_account'
+        prompt: 'select_account',
+        access_type: 'offline'
       }
     }
   });
@@ -656,7 +657,12 @@ function ensureDebaterForAccount(account){
 }
 $('#loginForm').addEventListener('submit',e=>{e.preventDefault();loginWithFields()});
 if($('#signupForm'))$('#signupForm').addEventListener('submit',e=>{e.preventDefault();registerWithFields()});
-if($('#adminProfileForm'))$('#adminProfileForm').addEventListener('submit',e=>{e.preventDefault();if(!isAdmin())return;const name=$('#adminName').value.trim();if(name.length<3){alert('Digite um nome com pelo menos 3 caracteres.');return}adminProfile.name=name;saveAdminProfile();currentUser={...currentUser,name};safeStore(K.u,JSON.stringify(currentUser));applyPermissions();alert('Nome do admin atualizado.')});
+if($('#adminProfileForm'))$('#adminProfileForm').addEventListener('submit',e=>{e.preventDefault();if(!isAdmin())return;const name=$('#adminName').value.trim();if(name.length<3){alert('Digite um nome com pelo menos 3 caracteres.');return}adminProfile.name=name;saveAdminProfile();currentUser={...currentUser,name};safeStore(K.u,JSON.stringify(currentUser));applyPermissions();
+  // Sync admin name to Supabase if logged in via Google
+  if(currentUser && isUuid(currentUser.id)){
+    supabaseClient.from('profiles').update({name}).eq('id',currentUser.id).then(({error})=>{if(error)console.error('Erro atualizando nome admin:',error);});
+  }
+  alert('Nome do admin atualizado.')});
 if($('#loginTab'))$('#loginTab').addEventListener('click',()=>window.switchAuth('login'));
 if($('#signupTab'))$('#signupTab').addEventListener('click',()=>window.switchAuth('signup'));
 window.show=function(id){id=requireSection(id);$$('.sec').forEach(x=>x.classList.toggle('on',x.id===id));$$('.nav button').forEach(x=>x.classList.toggle('on',x.dataset.s===id));$('.app').classList.remove('nav-open');const btn=$('.menu-toggle');if(btn){btn.setAttribute('aria-label','Abrir abas');btn.title='Abrir abas';btn.textContent='☰'}render()};
@@ -672,12 +678,34 @@ document.addEventListener('click',function(e){
   const editDebaterBtn=e.target.closest('.js-edit-debater');
   if(editDebaterBtn){e.preventDefault();e.stopPropagation();window.editDebater(editDebaterBtn.dataset.id);return}
 });
-function stats(id){const items=[];E.forEach(ev=>(ev.lineup||[]).forEach(l=>{if(l.debaterId===id)items.push({ev,score:(ev.scores||{})[id]})}));const scored=items.filter(x=>x.score&&x.score.total!==undefined);const av=a=>a.length?a.reduce((s,x)=>s+Number(x),0)/a.length:0;return{debates:items.length,scored:scored.length,content:av(scored.map(x=>x.score.content)),style:av(scored.map(x=>x.score.style)),strategy:av(scored.map(x=>x.score.strategy)),total:av(scored.map(x=>x.score.total))}}
+function stats(id){
+  // Count unique events the debater participated in (reply + constructive in same event = 1 debate)
+  const seenEvents = new Set();
+  const items = [];
+  E.forEach(ev => {
+    const lineupEntries = (ev.lineup || []).filter(l => l.debaterId === id);
+    if (lineupEntries.length > 0 && !seenEvents.has(ev.id)) {
+      seenEvents.add(ev.id);
+      items.push({ev, score: (ev.scores || {})[id]});
+    }
+  });
+  const scored = items.filter(x => x.score && x.score.total !== undefined);
+  const av = a => a.length ? a.reduce((s, x) => s + Number(x), 0) / a.length : 0;
+  return {
+    debates: items.length,
+    scored: scored.length,
+    content: av(scored.map(x => x.score.content)),
+    style: av(scored.map(x => x.score.style)),
+    strategy: av(scored.map(x => x.score.strategy)),
+    total: av(scored.map(x => x.score.total))
+  };
+}
 function metric(a,b,c,p){const cls=(a==='Minha média'||a==='Média geral')?'metric-overall':a==='Conteúdo'?'metric-content':a==='Estilo'?'metric-style':'metric-overall';return '<div class="card metric '+cls+'"><small>'+esc(a)+'</small><b>'+esc(b)+'</b><span class="muted">'+esc(c)+'</span><div class="bar"><i style="--w:'+Math.max(5,Math.min(100,Number(p)||5))+'%"></i></div></div>'}
 function avg(a){return a.length?a.reduce((s,x)=>s+Number(x),0)/a.length:0}
-function sortEvent(a,b){return (a.date+a.time).localeCompare(b.date+b.time)}
+function fmtTime(t){ return String(t||'').slice(0,5); }
+function sortEvent(a,b){return (a.date+fmtTime(a.time)).localeCompare(b.date+fmtTime(b.time))}
 function weekday(date){return new Date(date+'T00:00').toLocaleDateString('pt-BR',{weekday:'long'})}
-function eventCard(ev){const lineup=(ev.lineup||[]).map(l=>{const d=D.find(x=>x.id===l.debaterId);return d?l.role+': '+d.name:''}).filter(Boolean),actions=canManageEvents()?'<div><button type="button" class="btn2 js-edit-event" data-id="'+esc(ev.id)+'">Editar</button> <button type="button" class="danger js-delete-event" data-id="'+esc(ev.id)+'">Excluir</button></div>':'';return '<div class="event" data-event-id="'+esc(ev.id)+'"><div class="time">'+esc(ev.time)+'</div><div><b>'+esc(ev.motion)+'</b><br><small class="muted">'+esc(weekday(ev.date))+' · '+esc(ev.format)+' · '+esc(ev.place||'Sem local')+'</small><div>'+(lineup.length?lineup.map(x=>'<span class="pill">'+esc(x)+'</span>').join(''):'<span class="pill red">Sem escalação</span>')+'</div></div>'+actions+'</div>'}
+function eventCard(ev){const lineup=(ev.lineup||[]).map(l=>{const d=D.find(x=>x.id===l.debaterId);return d?l.role+': '+d.name:''}).filter(Boolean),actions=canManageEvents()?'<div><button type="button" class="btn2 js-edit-event" data-id="'+esc(ev.id)+'">Editar</button> <button type="button" class="danger js-delete-event" data-id="'+esc(ev.id)+'">Excluir</button></div>':'';return '<div class="event" data-event-id="'+esc(ev.id)+'"><div class="time">'+esc(fmtTime(ev.time))+'</div><div><b>'+esc(ev.motion)+'</b><br><small class="muted">'+esc(weekday(ev.date))+' · '+esc(ev.format)+' · '+esc(ev.place||'Sem local')+'</small><div>'+(lineup.length?lineup.map(x=>'<span class="pill">'+esc(x)+'</span>').join(''):'<span class="pill red">Sem escalação</span>')+'</div></div>'+actions+'</div>'}
 function currentDebater(){if(!currentUser)return D[0];return D.find(d=>d.id===currentUser.debaterId)||D[0]}
 let profileDraft={photo:'',banner:''};
 function renderStudent(){
@@ -758,8 +786,8 @@ function scoreBox(l,scores,prefix){const s=scores[l.debaterId]||{},isReply=l.rol
 function renderEvals(scores={}){const box=$('#evals');if(!box)return;const lineup=$$('[data-role]').map(s=>({role:s.dataset.role,debaterId:s.value,name:(D.find(d=>d.id===s.value)||{}).name})).filter(x=>x.debaterId);box.innerHTML=lineup.length?lineup.map(l=>scoreBox(l,scores,'event-')).join(''):'<div class="empty">Escalone debatedores para avaliá-los.</div>'}
 $('#eventForm').addEventListener('submit',e=>{e.preventDefault();const id=$('#eId').value||uid(),lineup=$$('[data-role]').map(s=>({role:s.dataset.role,debaterId:s.value})).filter(x=>x.debaterId),scores={};lineup.forEach(l=>{const vals={};$$('[data-id="'+CSS.escape('event-'+l.debaterId)+'"]').forEach(i=>{if(i.value!=='')vals[i.dataset.score]=Number(i.value)});if(vals.content!==undefined&&vals.style!==undefined&&vals.strategy!==undefined){vals.total=vals.content+vals.style+vals.strategy;scores[l.debaterId]=vals}});const p={id,date:$('#eDate').value,time:$('#eTime').value,motion:$('#eMotion').value.trim(),format:$('#eFormat').value,place:$('#ePlace').value.trim(),lineup,scores};E=E.some(x=>x.id===id)?E.map(x=>x.id===id?p:x):[...E,p];selectedDate=p.date;viewDate=new Date(p.date+'T00:00');save();resetEvent();render()});
 window.editEvent=function(id){if(!canManageEvents())return alert('Só o admin pode editar debates.');const e=E.find(x=>x.id===id);if(!e)return;window.show('calendar');$('#efTitle').textContent='Editar debate';$('#eId').value=e.id;$('#eDate').value=e.date;$('#eTime').value=e.time;$('#eMotion').value=e.motion;$('#eFormat').value=e.format;$('#ePlace').value=e.place||'';selectedDate=e.date;viewDate=new Date(e.date+'T00:00');renderLineup(e.lineup||[]);renderEvals(e.scores||{});updateWeekday();renderCalendar();renderDayList()};
-function renderJudge(){const sel=$('#judgeEventSelect');if(!sel)return;const previous=sel.value;sel.innerHTML=E.sort(sortEvent).map(e=>'<option value="'+esc(e.id)+'">'+esc(e.date+' '+e.time+' — '+e.motion)+'</option>').join('');if(previous)sel.value=previous;if(!sel.value&&E[0])sel.value=E[0].id;loadJudgeEvent(false);$('#judgeSaved').innerHTML=E.filter(e=>e.judge||e.winner||e.decision).sort(sortEvent).map(e=>'<div class="result"><b>'+esc(e.motion)+'</b><p>'+esc(e.date+' '+e.time)+' · Juiz: '+esc(e.judge||'não informado')+' · Vencedor: '+esc(e.winner||'sem decisão')+'</p><p>'+esc(e.decision||'')+'</p></div>').join('')||'<div class="empty">Nenhum registro de juiz salvo.</div>'}
-window.loadJudgeEvent=function(keep=true){const id=$('#judgeEventSelect')&&$('#judgeEventSelect').value;const e=E.find(x=>x.id===id);if(!e)return;$('#judgeName').value=e.judge||'';$('#judgeWinner').value=e.winner||'';$('#judgeDecision').value=e.decision||'';$('#judgeEventInfo').innerHTML='<p><b>'+esc(e.motion)+'</b><br><span class="muted">'+esc(e.date+' · '+e.time+' · '+weekday(e.date))+'</span></p><button type="button" class="danger" onclick="delEvent(\''+esc(e.id)+'\')">Excluir este debate</button>';const lineup=(e.lineup||[]).map(l=>({role:l.role,debaterId:l.debaterId,name:(D.find(d=>d.id===l.debaterId)||{}).name})).filter(x=>x.debaterId);$('#judgeScores').innerHTML=lineup.length?lineup.map(l=>scoreBox(l,e.scores||{},'judge-')).join(''):'<div class="empty">Este debate ainda não tem participantes escalados. Edite no calendário primeiro.</div>'}
+function renderJudge(){const sel=$('#judgeEventSelect');if(!sel)return;const previous=sel.value;sel.innerHTML=E.sort(sortEvent).map(e=>'<option value="'+esc(e.id)+'">'+esc(e.date+' '+fmtTime(e.time)+' — '+e.motion)+'</option>').join('');if(previous)sel.value=previous;if(!sel.value&&E[0])sel.value=E[0].id;loadJudgeEvent(false);$('#judgeSaved').innerHTML=E.filter(e=>e.judge||e.winner||e.decision).sort(sortEvent).map(e=>'<div class="result"><b>'+esc(e.motion)+'</b><p>'+esc(e.date+' '+fmtTime(e.time))+' · Juiz: '+esc(e.judge||'não informado')+' · Vencedor: '+esc(e.winner||'sem decisão')+'</p><p>'+esc(e.decision||'')+'</p></div>').join('')||'<div class="empty">Nenhum registro de juiz salvo.</div>'}
+window.loadJudgeEvent=function(keep=true){const id=$('#judgeEventSelect')&&$('#judgeEventSelect').value;const e=E.find(x=>x.id===id);if(!e)return;$('#judgeName').value=e.judge||'';$('#judgeWinner').value=e.winner||'';$('#judgeDecision').value=e.decision||'';$('#judgeEventInfo').innerHTML='<p><b>'+esc(e.motion)+'</b><br><span class="muted">'+esc(e.date+' · '+fmtTime(e.time)+' · '+weekday(e.date))+'</span></p><button type="button" class="danger" onclick="delEvent(\''+esc(e.id)+'\')">Excluir este debate</button>';const lineup=(e.lineup||[]).map(l=>({role:l.role,debaterId:l.debaterId,name:(D.find(d=>d.id===l.debaterId)||{}).name})).filter(x=>x.debaterId);$('#judgeScores').innerHTML=lineup.length?lineup.map(l=>scoreBox(l,e.scores||{},'judge-')).join(''):'<div class="empty">Este debate ainda não tem participantes escalados. Edite no calendário primeiro.</div>'}
 window.saveJudgeRecord=function(){if(!canJudge())return alert('Só juiz ou admin pode registrar decisões.');const id=$('#judgeEventSelect').value;const e=E.find(x=>x.id===id);if(!e)return;const scores={};(e.lineup||[]).forEach(l=>{const vals={};$$('[data-id="'+CSS.escape('judge-'+l.debaterId)+'"]').forEach(i=>{if(i.value!=='')vals[i.dataset.score]=Number(i.value)});if(vals.content!==undefined&&vals.style!==undefined&&vals.strategy!==undefined){vals.total=vals.content+vals.style+vals.strategy;scores[l.debaterId]=vals}});Object.assign(e,{judge:$('#judgeName').value.trim(),winner:$('#judgeWinner').value,decision:$('#judgeDecision').value.trim(),scores});save();render();window.show('judge')};
 window.delEvent=function(id){
   if(!requireAdmin('excluir debates'))return;
@@ -786,7 +814,7 @@ window.delEvent=function(id){
   render();
 };
 window.resetEvent=function(){$('#efTitle').textContent='Novo debate';$('#eventForm').reset();$('#eId').value='';$('#eDate').value=selectedDate;$('#eTime').value='14:00';renderLineup([]);updateWeekday()};
-function renderCalendar(){const y=viewDate.getFullYear(),m=viewDate.getMonth(),first=new Date(y,m,1),start=new Date(first);start.setDate(1-first.getDay());$('#calTitle').textContent=viewDate.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});let html=['dom','seg','ter','qua','qui','sex','sáb'].map(d=>'<div class="dow">'+d+'</div>').join('');for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);const iso=d.toISOString().slice(0,10),evs=E.filter(e=>e.date===iso).sort(sortEvent);html+='<div class="day '+(d.getMonth()!==m?'off':'')+' '+(iso===selectedDate?'sel':'')+'" data-date="'+iso+'"><div class="daynum">'+d.getDate()+'</div>'+evs.slice(0,3).map(e=>'<span class="chip">'+esc(e.time)+' '+esc(e.motion)+'</span>').join('')+(evs.length>3?'<span class="chip">+'+(evs.length-3)+'</span>':'')+'</div>'}$('#calendarGrid').innerHTML=html;$$('.day[data-date]').forEach(day=>day.onclick=()=>selectDay(day.dataset.date))}
+function renderCalendar(){const y=viewDate.getFullYear(),m=viewDate.getMonth(),first=new Date(y,m,1),start=new Date(first);start.setDate(1-first.getDay());$('#calTitle').textContent=viewDate.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});let html=['dom','seg','ter','qua','qui','sex','sáb'].map(d=>'<div class="dow">'+d+'</div>').join('');for(let i=0;i<42;i++){const d=new Date(start);d.setDate(start.getDate()+i);const iso=d.toISOString().slice(0,10),evs=E.filter(e=>e.date===iso).sort(sortEvent);html+='<div class="day '+(d.getMonth()!==m?'off':'')+' '+(iso===selectedDate?'sel':'')+'" data-date="'+iso+'"><div class="daynum">'+d.getDate()+'</div>'+evs.slice(0,3).map(e=>'<span class="chip">'+esc(fmtTime(e.time))+' '+esc(e.motion)+'</span>').join('')+(evs.length>3?'<span class="chip">+'+(evs.length-3)+'</span>':'')+'</div>'}$('#calendarGrid').innerHTML=html;$$('.day[data-date]').forEach(day=>day.onclick=()=>selectDay(day.dataset.date))}
 window.moveMonth=function(n){viewDate.setMonth(viewDate.getMonth()+n);renderCalendar()};
 function selectDay(iso){selectedDate=iso;$('#eDate').value=iso;updateWeekday();renderCalendar();renderDayList()}
 window.updateDateFromInput=function(){selectedDate=$('#eDate').value;viewDate=new Date(selectedDate+'T00:00');updateWeekday();renderCalendar();renderDayList()};
@@ -983,6 +1011,8 @@ function roleFromDebater(d){
   return 'student';
 }
 function mapProfileRow(row){
+  // role can be 'admin', 'judge', or 'student'
+  const roles = (row.role === 'judge') ? ['judge'] : [];
   return {
     id: row.id,
     name: row.name || 'Aluno SSD',
@@ -990,7 +1020,8 @@ function mapProfileRow(row){
     status: 'Ativo',
     photo: row.photo || '',
     banner: row.banner || '',
-    roles: row.role === 'judge' ? ['judge'] : []
+    roles: roles,
+    _dbRole: row.role || 'student'
   };
 }
 function mapDebateRows(debates, scoreRows){
@@ -1003,20 +1034,28 @@ function mapDebateRows(debates, scoreRows){
     const rows = byDebate[ev.id] || [];
     const scores = {};
     const lineup = rows.filter(r => r.user_id).map(r => {
-      if(r.content !== null && r.content !== undefined && r.style !== null && r.style !== undefined && r.strategy !== null && r.strategy !== undefined){
+      // Only store score if all three components are present
+      const hasScore = r.content !== null && r.content !== undefined &&
+                       r.style !== null && r.style !== undefined &&
+                       r.strategy !== null && r.strategy !== undefined;
+      if(hasScore){
+        const c = Number(r.content), s = Number(r.style), st = Number(r.strategy);
         scores[r.user_id] = {
-          content: Number(r.content),
-          style: Number(r.style),
-          strategy: Number(r.strategy),
-          total: Number(r.total ?? (Number(r.content)+Number(r.style)+Number(r.strategy)))
+          content: c,
+          style: s,
+          strategy: st,
+          total: Number(r.total ?? (c + s + st))
         };
       }
       return { role: r.role || 'Debatedor', debaterId: r.user_id };
     });
+    // Strip seconds from time (Supabase returns HH:MM:SS)
+    const rawTime = ev.time || '';
+    const cleanTime = rawTime.length > 5 ? rawTime.slice(0, 5) : rawTime;
     return {
       id: ev.id,
       date: ev.date || '',
-      time: ev.time || '',
+      time: cleanTime,
       motion: ev.motion || '',
       format: ev.format || '',
       place: ev.place || '',
