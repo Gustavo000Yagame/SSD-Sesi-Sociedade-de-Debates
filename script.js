@@ -377,17 +377,50 @@ window.switchAuth=function(mode){
   setAuthMessage('#loginError','');
   setAuthMessage('#signupError','');
 };
-function loginWithFields(){
+async function loginWithFields(){
   const email=normalizeEmail($('#loginEmail').value);
   const password=$('#loginPassword').value;
   setAuthMessage('#loginError','');
+
+  // --- Admin local ---
   if(email===normalizeEmail(ADMIN_EMAIL)&&password===ADMIN_PASSWORD){
     currentUser={id:'u_admin',role:'admin',name:adminProfile.name,email,debaterId:'',authVersion:AUTH_VERSION};
     safeStore(K.u,JSON.stringify(currentUser));
+    await loadAll();
     applyPermissions();
     window.show('overview');
     return;
   }
+
+  // --- Tenta autenticar no Supabase ---
+  const { data: authData, error: authError } = await supabaseClient.auth.signInWithPassword({ email, password });
+
+  if (!authError && authData && authData.user) {
+    // Login OK — carrega tudo do banco
+    await iniciarLoginSupabase();
+    return;
+  }
+
+  // --- Trata erros específicos do Supabase ---
+  if (authError) {
+    const msg = authError.message || '';
+
+    // Conta existe mas email não confirmado
+    if (msg.toLowerCase().includes('email not confirmed') || msg.toLowerCase().includes('not confirmed')) {
+      // Reenvia o email de confirmação automaticamente
+      await supabaseClient.auth.resend({ type: 'signup', email });
+      setAuthMessage('#loginError', '⚠️ Sua conta precisa ser confirmada. Reenviamos o e-mail de confirmação para ' + email + '. Verifique sua caixa de entrada (e spam).');
+      return;
+    }
+
+    // Senha errada ou usuário não existe no Supabase Auth
+    if (msg.toLowerCase().includes('invalid login') || msg.toLowerCase().includes('invalid credentials') || msg.toLowerCase().includes('wrong password')) {
+      setAuthMessage('#loginError', 'E-mail ou senha inválidos.');
+      return;
+    }
+  }
+
+  // --- Fallback: conta criada localmente antes do Supabase ---
   const account=accountByEmail(email);
   if(!account||account.password!==password){
     setAuthMessage('#loginError','E-mail ou senha inválidos.');
@@ -396,12 +429,12 @@ function loginWithFields(){
   ensureDebaterForAccount(account);
   currentUser={id:account.id,role:account.role||'student',name:account.name,email:account.email,debaterId:account.debaterId,authVersion:AUTH_VERSION};
   safeStore(K.u,JSON.stringify(currentUser));
-  save();
+  await loadAll();
   applyPermissions();
   window.show('student');
 }
 window.loginWithFields=loginWithFields;
-function registerWithFields(){
+async function registerWithFields(){
   const name=$('#signupName').value.trim();
   const email=normalizeEmail($('#signupEmail').value);
   const password=$('#signupPassword').value;
@@ -412,6 +445,40 @@ function registerWithFields(){
   if(password.length<4){setAuthMessage('#signupError','A senha precisa ter pelo menos 4 caracteres.');return}
   if(password!==confirm){setAuthMessage('#signupError','As senhas não conferem.');return}
   if(accountByEmail(email)||email===normalizeEmail(ADMIN_EMAIL)){setAuthMessage('#signupError','Este e-mail já está cadastrado.');return}
+
+  // Tenta criar conta no Supabase Auth (sem exigir confirmação de email)
+  const { data: authData, error: authError } = await supabaseClient.auth.signUp({
+    email,
+    password,
+    options: {
+      data: { full_name: name },
+      emailRedirectTo: window.location.origin + window.location.pathname
+    }
+  });
+
+  if (!authError && authData && authData.user) {
+    const userId = authData.user.id;
+    const className = selected ? selected.value : '';
+    await supabaseClient.from('profiles').upsert({
+      id: userId,
+      name,
+      class_name: className,
+      photo: '',
+      banner: '',
+      role: 'student'
+    }, { onConflict: 'id' });
+
+    // Se email confirmation está ativo, avisa o aluno
+    if (!authData.session) {
+      setAuthMessage('#signupError', '✅ Conta criada! Verifique seu e-mail (' + email + ') para confirmar antes de entrar.');
+      return;
+    }
+
+    await iniciarLoginSupabase();
+    return;
+  }
+
+  // Fallback local se Supabase falhar
   const debater={id:uid(),name,className:selected?selected.value:'',status:'Ativo',photo:'',banner:'',roles:[]};
   const account={id:uid(),name,email,password,className:debater.className,debaterId:debater.id,role:'student',authVersion:AUTH_VERSION};
   D=[...D,debater];
@@ -429,7 +496,8 @@ window.hardResetSession=function(){
   applyPermissions();
   window.switchAuth('login');
 };
-window.logout=function(){
+window.logout=async function(){
+  await supabaseClient.auth.signOut();
   localStorage.removeItem(K.u);
   currentUser=null;
   applyPermissions();
@@ -503,8 +571,8 @@ function ensureDebaterForAccount(account){
 
   return debater;
 }
-$('#loginForm').addEventListener('submit',e=>{e.preventDefault();loginWithFields()});
-if($('#signupForm'))$('#signupForm').addEventListener('submit',e=>{e.preventDefault();registerWithFields()});
+$('#loginForm').addEventListener('submit',e=>{e.preventDefault();const btn=e.target.querySelector('button[type="submit"]');if(btn){btn.disabled=true;btn.textContent='Entrando...';}loginWithFields().finally(()=>{if(btn){btn.disabled=false;btn.textContent='Entrar';}})});
+if($('#signupForm'))$('#signupForm').addEventListener('submit',e=>{e.preventDefault();const btn=e.target.querySelector('button[type="submit"]');if(btn){btn.disabled=true;btn.textContent='Criando conta...';}registerWithFields().finally(()=>{if(btn){btn.disabled=false;btn.textContent='Criar conta';}})});
 if($('#adminProfileForm'))$('#adminProfileForm').addEventListener('submit',e=>{e.preventDefault();if(!isAdmin())return;const name=$('#adminName').value.trim();if(name.length<3){alert('Digite um nome com pelo menos 3 caracteres.');return}adminProfile.name=name;saveAdminProfile();currentUser={...currentUser,name};safeStore(K.u,JSON.stringify(currentUser));applyPermissions();
   // Sync admin name to Supabase if logged in via Google
   if(currentUser && isUuid(currentUser.id)){
