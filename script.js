@@ -983,7 +983,7 @@ function mapDebateRows(debates, scoreRows){
     };
   });
 }
-async function loadAll(){
+async function loadAll(shouldRender = false){
   ensureArrays();
   try{
     const [profilesRes, debatesRes, scoresRes] = await Promise.all([
@@ -1004,7 +1004,7 @@ async function loadAll(){
       safeStore(K.e, JSON.stringify(E));
     }
     A = [];
-    render && render();
+    if(shouldRender) render && render();
   }catch(err){
     console.error('Erro carregando Supabase:', err);
     D = [];
@@ -1077,22 +1077,42 @@ async function syncToSupabase(){
   }
 }
 
-function iniciarLoginSupabase() {
+async function iniciarLoginSupabase() {
+  // Se o admin local já está logado, só carrega os dados do banco e renderiza
+  if (currentUser && currentUser.role === 'admin' && currentUser.id === 'u_admin') {
+    localStorage.removeItem(K.d);
+    localStorage.removeItem(K.e);
+    localStorage.removeItem(K.a);
+    await loadAll();
+    applyPermissions();
+    window.show('overview');
+    return;
+  }
+
   localStorage.removeItem(K.d);
   localStorage.removeItem(K.e);
   localStorage.removeItem(K.a);
-  loadAll().then(() => carregarUsuario()).then(logado => {
-    if (logado && currentUser) {
-      save();
-    }
-    applyPermissions();
 
-    if (logado && currentUser) {
-      window.show(currentUser.role === 'admin' ? 'overview' : 'student');
+  await loadAll();
+  const logado = await carregarUsuario();
+
+  if (logado && currentUser) {
+    save();
+    applyPermissions();
+    window.show(currentUser.role === 'admin' ? 'overview' : 'student');
+  } else {
+    // Checa se tinha sessão de admin salva no localStorage antes de limpar
+    const saved = safeParse(localStorage.getItem(K.u), null);
+    if (saved && saved.role === 'admin' && saved.id === 'u_admin' && saved.authVersion === AUTH_VERSION) {
+      currentUser = saved;
+      applyPermissions();
+      window.show('overview');
     } else {
+      currentUser = null;
+      applyPermissions();
       window.switchAuth('login');
     }
-  });
+  }
 }
 
 if (document.readyState === 'loading') {
