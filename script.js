@@ -459,7 +459,7 @@ async function registerWithFields(){
   if (!authError && authData && authData.user) {
     const userId = authData.user.id;
     const className = selected ? selected.value : '';
-    await supabaseClient.from('profiles').upsert({
+    const { error: upsertError } = await supabaseClient.from('profiles').upsert({
       id: userId,
       name,
       class_name: className,
@@ -467,6 +467,8 @@ async function registerWithFields(){
       banner: '',
       role: 'student'
     }, { onConflict: 'id' });
+
+    if (upsertError) console.error('Erro criando profile:', upsertError);
 
     // Se email confirmation está ativo, avisa o aluno
     if (!authData.session) {
@@ -478,16 +480,18 @@ async function registerWithFields(){
     return;
   }
 
-  // Fallback local se Supabase falhar
-  const debater={id:uid(),name,className:selected?selected.value:'',status:'Ativo',photo:'',banner:'',roles:[]};
-  const account={id:uid(),name,email,password,className:debater.className,debaterId:debater.id,role:'student',authVersion:AUTH_VERSION};
-  D=[...D,debater];
-  A=[...A,account];
-  currentUser={id:account.id,role:'student',name,email,debaterId:debater.id,authVersion:AUTH_VERSION};
-  safeStore(K.u,JSON.stringify(currentUser));
-  save();
-  applyPermissions();
-  window.show('student');
+  // Erro no signUp — mostra mensagem clara
+  if (authError) {
+    const msg = authError.message || '';
+    if (msg.toLowerCase().includes('already registered') || msg.toLowerCase().includes('already exists') || msg.toLowerCase().includes('duplicate')) {
+      setAuthMessage('#signupError', 'Este e-mail já está cadastrado. Tente fazer login.');
+    } else {
+      setAuthMessage('#signupError', 'Erro ao criar conta: ' + msg);
+    }
+    return;
+  }
+
+  setAuthMessage('#signupError', 'Não foi possível criar a conta. Tente novamente.');
 }
 window.registerWithFields=registerWithFields;
 window.hardResetSession=function(){
@@ -638,7 +642,7 @@ function renderStudent(){
 }
 window.editMyProfile=function(){const d=currentDebater();if(!d)return;profileDraft={photo:d.photo||'',banner:d.banner||''};$('#studentProfileEditor').classList.add('on');show('student')}
 window.cancelMyProfile=function(){const d=currentDebater();profileDraft={photo:d.photo||'',banner:d.banner||''};$('#studentProfileEditor').classList.remove('on');renderStudent()}
-window.saveMyProfile=function(){const d=currentDebater();if(!d)return;d.photo=profileDraft.photo||'';d.banner=profileDraft.banner||'';save();$('#studentProfileEditor').classList.remove('on');render()}
+window.saveMyProfile=async function(){const d=currentDebater();if(!d)return;d.photo=profileDraft.photo||'';d.banner=profileDraft.banner||'';await save();$('#studentProfileEditor').classList.remove('on');render()}
 window.removeMyAvatar=function(){profileDraft.photo='';const d=currentDebater();if(d){d.photo='';save();renderStudent()}}
 window.removeMyBanner=function(){profileDraft.banner='';const d=currentDebater();if(d){d.banner='';save();renderStudent()}}
 function readImageFile(file,callback,maxMb=1.2){if(!file)return;if(!file.type.startsWith('image/')){alert('Escolha um arquivo de imagem.');return}const limit=maxMb*1024*1024;if(file.size>limit){alert('Imagem muito pesada. Use uma imagem/GIF com até '+String(maxMb).replace('.',',')+' MB.');return}const reader=new FileReader();reader.onload=()=>callback(reader.result);reader.readAsDataURL(file)}
@@ -664,8 +668,8 @@ window.loadDebaterPhoto=function(event){const file=event.target.files&&event.tar
 window.removeDebaterPhoto=function(){if($('#dPhoto'))$('#dPhoto').value='';if($('#dPhotoFile'))$('#dPhotoFile').value='';renderPhotoPreview('', $('#dName')?$('#dName').value:'')}
 window.editDebater=function(id){if(!canManageDebaters())return alert('Só o admin pode editar debatedores por aqui.');const d=D.find(x=>x.id===id);if(!d)return;window.show('settings');$('#dfTitle').textContent='Editar perfil';$('#dId').value=d.id;$('#dName').value=d.name;$('#dClass').value=d.className||'';$('#dStatus').value=d.status;$('#dPhoto').value=d.photo||'';const r=d.roles||[];$('#dRoleJudge').checked=r.includes('judge');renderPhotoPreview(d.photo||'',d.name)};
 window.resetDebater=function(){$('#dfTitle').textContent='Adicionar debatedor';$('#debaterForm').reset();$('#dId').value='';if($('#dPhoto'))$('#dPhoto').value='';if($('#dPhotoFile'))$('#dPhotoFile').value='';if($('#dRoleJudge'))$('#dRoleJudge').checked=false;renderPhotoPreview('', '')};
-$('#debaterForm').addEventListener('submit',e=>{e.preventDefault();if(!canManageDebaters())return alert('Só o admin pode salvar debatedores.');const id=$('#dId').value||uid(),old=D.find(d=>d.id===id)||{},roles=$('#dRoleJudge').checked?['judge']:[],p={id,name:$('#dName').value.trim(),className:$('#dClass').value.trim(),status:$('#dStatus').value,photo:$('#dPhoto').value,banner:old.banner||'',roles};D=D.some(d=>d.id===id)?D.map(d=>d.id===id?p:d):[...D,p];A=A.map(a=>a.debaterId===id?{...a,name:p.name}:a);save();window.resetDebater();render()});
-window.delDebater=function(id){
+$('#debaterForm').addEventListener('submit',async e=>{e.preventDefault();if(!canManageDebaters())return alert('Só o admin pode salvar debatedores.');const btn=e.target.querySelector('button[type="submit"]');if(btn){btn.disabled=true;btn.textContent='Salvando...';}const id=$('#dId').value||uid(),old=D.find(d=>d.id===id)||{},roles=$('#dRoleJudge').checked?['judge']:[],p={id,name:$('#dName').value.trim(),className:$('#dClass').value.trim(),status:$('#dStatus').value,photo:$('#dPhoto').value,banner:old.banner||'',roles};D=D.some(d=>d.id===id)?D.map(d=>d.id===id?p:d):[...D,p];A=A.map(a=>a.debaterId===id?{...a,name:p.name}:a);await save();if(btn){btn.disabled=false;btn.textContent='Salvar perfil';}window.resetDebater();render()});
+window.delDebater=async function(id){
   if(!requireAdmin('excluir membros'))return;
   id=String(id||'');
   if(!id||id==='undefined'||id==='null'){
@@ -694,17 +698,22 @@ window.delDebater=function(id){
 
   if(currentUser&&String(currentUser.debaterId)===id){localStorage.removeItem(K.u);currentUser=null}
   if($('#dId')&&$('#dId').value===id) resetDebater();
-  save();
+  // Apaga do Supabase se for UUID válido
+  if(isUuid(id)){
+    supabaseClient.from('debate_scores').delete().eq('user_id', id).then(({error})=>{ if(error) console.error('Erro excluindo scores do membro:', error); });
+    supabaseClient.from('profiles').delete().eq('id', id).then(({error})=>{ if(error) console.error('Erro excluindo profile:', error); });
+  }
+  await save();
   render();
 };
 function renderLineup(sel=[]){ensureArrays();const box=$('#lineup');if(!box)return;const current=$$('[data-role]').map(s=>({role:s.dataset.role,debaterId:s.value})).filter(x=>x.debaterId),base=Array.isArray(sel)&&sel.length?sel:current;box.innerHTML=roles.map(r=>{const v=(base.find(x=>x.role===r)||{}).debaterId||'';return '<label>'+esc(r)+'<select data-role="'+esc(r)+'"><option value="">Sem escalação</option>'+D.map(d=>'<option value="'+esc(d.id)+'" '+(v===d.id?'selected':'')+'>'+esc(d.name)+'</option>').join('')+'</select></label>'}).join('');$$('[data-role]').forEach(s=>s.onchange=()=>renderEvals());renderEvals()}
 function scoreBox(l,scores,prefix){const s=scores[l.debaterId]||{},isReply=l.role.includes('Reply');return '<div class="evalbox"><h4>'+esc(l.role)+' — '+esc(l.name)+'</h4><div class="evalgrid"><label>Conteúdo<input data-score="content" data-id="'+esc(prefix+l.debaterId)+'" type="number" min="'+(isReply?12:24)+'" max="'+(isReply?16:32)+'" step=".5" value="'+esc(s.content??'')+'" placeholder="'+(isReply?'12-16':'24-32')+'"></label><label>Estilo<input data-score="style" data-id="'+esc(prefix+l.debaterId)+'" type="number" min="'+(isReply?12:24)+'" max="'+(isReply?16:32)+'" step=".5" value="'+esc(s.style??'')+'" placeholder="'+(isReply?'12-16':'24-32')+'"></label><label>Estratégia<input data-score="strategy" data-id="'+esc(prefix+l.debaterId)+'" type="number" min="'+(isReply?6:12)+'" max="'+(isReply?8:16)+'" step=".5" value="'+esc(s.strategy??'')+'" placeholder="'+(isReply?'6-8':'12-16')+'"></label></div></div>'}
 function renderEvals(scores={}){const box=$('#evals');if(!box)return;const lineup=$$('[data-role]').map(s=>({role:s.dataset.role,debaterId:s.value,name:(D.find(d=>d.id===s.value)||{}).name})).filter(x=>x.debaterId);box.innerHTML=lineup.length?lineup.map(l=>scoreBox(l,scores,'event-')).join(''):'<div class="empty">Escalone debatedores para avaliá-los.</div>'}
-$('#eventForm').addEventListener('submit',e=>{e.preventDefault();const id=$('#eId').value||uid(),lineup=$$('[data-role]').map(s=>({role:s.dataset.role,debaterId:s.value})).filter(x=>x.debaterId),scores={};lineup.forEach(l=>{const vals={};$$('[data-id="'+CSS.escape('event-'+l.debaterId)+'"]').forEach(i=>{if(i.value!=='')vals[i.dataset.score]=Number(i.value)});if(vals.content!==undefined&&vals.style!==undefined&&vals.strategy!==undefined){vals.total=vals.content+vals.style+vals.strategy;scores[l.debaterId]=vals}});const p={id,date:$('#eDate').value,time:$('#eTime').value,motion:$('#eMotion').value.trim(),format:$('#eFormat').value,place:$('#ePlace').value.trim(),lineup,scores};E=E.some(x=>x.id===id)?E.map(x=>x.id===id?p:x):[...E,p];selectedDate=p.date;viewDate=new Date(p.date+'T00:00');save();resetEvent();render()});
+$('#eventForm').addEventListener('submit',async e=>{e.preventDefault();const btn=e.target.querySelector('button[type="submit"]');if(btn){btn.disabled=true;btn.textContent='Salvando...';}const id=$('#eId').value||uid(),lineup=$$('[data-role]').map(s=>({role:s.dataset.role,debaterId:s.value})).filter(x=>x.debaterId),scores={};lineup.forEach(l=>{const vals={};$$('[data-id="'+CSS.escape('event-'+l.debaterId)+'"]').forEach(i=>{if(i.value!=='')vals[i.dataset.score]=Number(i.value)});if(vals.content!==undefined&&vals.style!==undefined&&vals.strategy!==undefined){vals.total=vals.content+vals.style+vals.strategy;scores[l.debaterId]=vals}});const p={id,date:$('#eDate').value,time:$('#eTime').value,motion:$('#eMotion').value.trim(),format:$('#eFormat').value,place:$('#ePlace').value.trim(),lineup,scores};E=E.some(x=>x.id===id)?E.map(x=>x.id===id?p:x):[...E,p];selectedDate=p.date;viewDate=new Date(p.date+'T00:00');await save();if(btn){btn.disabled=false;btn.textContent='Salvar debate';}resetEvent();render()});
 window.editEvent=function(id){if(!canManageEvents())return alert('Só o admin pode editar debates.');const e=E.find(x=>x.id===id);if(!e)return;window.show('calendar');$('#efTitle').textContent='Editar debate';$('#eId').value=e.id;$('#eDate').value=e.date;$('#eTime').value=e.time;$('#eMotion').value=e.motion;$('#eFormat').value=e.format;$('#ePlace').value=e.place||'';selectedDate=e.date;viewDate=new Date(e.date+'T00:00');renderLineup(e.lineup||[]);renderEvals(e.scores||{});updateWeekday();renderCalendar();renderDayList()};
 function renderJudge(){const sel=$('#judgeEventSelect');if(!sel)return;const previous=sel.value;sel.innerHTML=E.sort(sortEvent).map(e=>'<option value="'+esc(e.id)+'">'+esc(e.date+' '+fmtTime(e.time)+' — '+e.motion)+'</option>').join('');if(previous)sel.value=previous;if(!sel.value&&E[0])sel.value=E[0].id;loadJudgeEvent(false);$('#judgeSaved').innerHTML=E.filter(e=>e.judge||e.winner||e.decision).sort(sortEvent).map(e=>'<div class="result"><b>'+esc(e.motion)+'</b><p>'+esc(e.date+' '+fmtTime(e.time))+' · Juiz: '+esc(e.judge||'não informado')+' · Vencedor: '+esc(e.winner||'sem decisão')+'</p><p>'+esc(e.decision||'')+'</p></div>').join('')||'<div class="empty">Nenhum registro de juiz salvo.</div>'}
 window.loadJudgeEvent=function(keep=true){const id=$('#judgeEventSelect')&&$('#judgeEventSelect').value;const e=E.find(x=>x.id===id);if(!e)return;$('#judgeName').value=e.judge||'';$('#judgeWinner').value=e.winner||'';$('#judgeDecision').value=e.decision||'';$('#judgeEventInfo').innerHTML='<p><b>'+esc(e.motion)+'</b><br><span class="muted">'+esc(e.date+' · '+fmtTime(e.time)+' · '+weekday(e.date))+'</span></p><button type="button" class="danger" onclick="delEvent(\''+esc(e.id)+'\')">Excluir este debate</button>';const lineup=(e.lineup||[]).map(l=>({role:l.role,debaterId:l.debaterId,name:(D.find(d=>d.id===l.debaterId)||{}).name})).filter(x=>x.debaterId);$('#judgeScores').innerHTML=lineup.length?lineup.map(l=>scoreBox(l,e.scores||{},'judge-')).join(''):'<div class="empty">Este debate ainda não tem participantes escalados. Edite no calendário primeiro.</div>'}
-window.saveJudgeRecord=function(){if(!canJudge())return alert('Só juiz ou admin pode registrar decisões.');const id=$('#judgeEventSelect').value;const e=E.find(x=>x.id===id);if(!e)return;const scores={};(e.lineup||[]).forEach(l=>{const vals={};$$('[data-id="'+CSS.escape('judge-'+l.debaterId)+'"]').forEach(i=>{if(i.value!=='')vals[i.dataset.score]=Number(i.value)});if(vals.content!==undefined&&vals.style!==undefined&&vals.strategy!==undefined){vals.total=vals.content+vals.style+vals.strategy;scores[l.debaterId]=vals}});Object.assign(e,{judge:$('#judgeName').value.trim(),winner:$('#judgeWinner').value,decision:$('#judgeDecision').value.trim(),scores});save();render();window.show('judge')};
+window.saveJudgeRecord=async function(){if(!canJudge())return alert('Só juiz ou admin pode registrar decisões.');const id=$('#judgeEventSelect').value;const e=E.find(x=>x.id===id);if(!e)return;const scores={};(e.lineup||[]).forEach(l=>{const vals={};$$('[data-id="'+CSS.escape('judge-'+l.debaterId)+'"]').forEach(i=>{if(i.value!=='')vals[i.dataset.score]=Number(i.value)});if(vals.content!==undefined&&vals.style!==undefined&&vals.strategy!==undefined){vals.total=vals.content+vals.style+vals.strategy;scores[l.debaterId]=vals}});Object.assign(e,{judge:$('#judgeName').value.trim(),winner:$('#judgeWinner').value,decision:$('#judgeDecision').value.trim(),scores});await save();render();window.show('judge')};
 window.delEvent=function(id){
   if(!requireAdmin('excluir debates'))return;
   id=String(id||'');
@@ -1012,12 +1021,12 @@ async function loadAll(shouldRender = false){
     A = [];
   }
 }
-function save(){
+async function save(){
   ensureArrays();
   safeStore(K.d, JSON.stringify(D));
   safeStore(K.e, JSON.stringify(E));
   saveAccounts();
-  syncToSupabase();
+  await syncToSupabase();
   return true;
 }
 async function syncToSupabase(){
