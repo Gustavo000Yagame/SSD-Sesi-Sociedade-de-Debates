@@ -465,7 +465,8 @@ async function registerWithFields(){
       class_name: className,
       photo: '',
       banner: '',
-      role: 'student'
+      role: 'student',
+      status: 'Ativo'
     }, { onConflict: 'id' });
 
     if (upsertError) console.error('Erro criando profile:', upsertError);
@@ -936,13 +937,12 @@ function roleFromDebater(d){
   return 'student';
 }
 function mapProfileRow(row){
-  // role can be 'admin', 'judge', or 'student'
   const roles = (row.role === 'judge') ? ['judge'] : [];
   return {
     id: row.id,
     name: row.name || 'Aluno SSD',
     className: row.class_name || '',
-    status: 'Ativo',
+    status: row.status || 'Ativo',
     photo: row.photo || '',
     banner: row.banner || '',
     roles: roles,
@@ -1037,7 +1037,8 @@ async function syncToSupabase(){
       class_name: d.className || '',
       photo: d.photo || '',
       banner: d.banner || '',
-      role: roleFromDebater(d)
+      role: roleFromDebater(d),
+      status: d.status || 'Ativo'
     }));
     if(validProfiles.length){
       const { error } = await supabaseClient.from('profiles').upsert(validProfiles, { onConflict: 'id' });
